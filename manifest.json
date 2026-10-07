@@ -1,11 +1,10 @@
 {
-	"id": "obsidian-tools",
-	"name": "Obsidian Tools",
+	"id": "cascade-templates",
+	"name": "Cascade Templates",
 	"version": "1.0.0",
 	"minAppVersion": "0.15.0",
-	"description": "",
+	"description": "A modular cascading templating system based on folder-level !Template.md files.",
 	"author": "palazz",
-	"authorUrl": "https://obsidian.md",
-	"fundingUrl": "https://obsidian.md/pricing",
+	"authorUrl": "https://github.com/MatteoPalazzolo",
 	"isDesktopOnly": false
 }

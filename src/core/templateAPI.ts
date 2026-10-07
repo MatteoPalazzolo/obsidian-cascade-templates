@@ -1,11 +1,12 @@
 import {MarkdownView, Plugin, TAbstractFile, TFile} from "obsidian";
 import {isPair, isScalar, parseDocument, Document as Doc} from 'yaml';
+import {TEMPLATE_FILENAME} from "../conts";
 
 let ctx: Plugin | undefined;
 
 export function init(context: Plugin): void {
-	if (!context) {
-		throw new Error("PluginContext init failed! Invalid context.");
+	if (ctx) {
+		throw new Error("PluginContext già inizializzato! init() va chiamato una sola volta.");
 	}
 	ctx = context;
 }
@@ -39,7 +40,7 @@ export function getTemplateOfFile(file: TFile | undefined): TFile | undefined {
 	while (f.parent) {
 		f = f.parent;
 		const folderPath = f.path === "/" ? "" : f.path + "/";
-		const templateFile = getCtx().app.vault.getAbstractFileByPath(folderPath + "!Template.md");
+		const templateFile = getCtx().app.vault.getAbstractFileByPath(folderPath + TEMPLATE_FILENAME);
 
 		if (templateFile instanceof TFile && templateFile.path !== file.path) {
 			return templateFile;
@@ -55,15 +56,22 @@ export function getActiveMarkdownFile() {
 	return getActiveMarkdownView()?.file ?? undefined;
 }
 
-export function getFilePropsUnsorted(file: TFile | undefined): Record<string, any> | undefined {
+/**
+ * Legge le proprietà del frontmatter dalla cache dei metadata di Obsidian.
+ * Versione sincrona, adatta ad operazioni massive (es. scanner).
+ */
+export function getFilePropsFromCache(file: TFile | undefined): Record<string, any> | undefined {
 	if (!file) return;
 	return getCtx().app.metadataCache.getFileCache(file)?.frontmatter;
 }
 
+/**
+ * Legge il frontmatter del file preservandone l'ordine esatto di lettura.
+ */
 export async function getFileProps(file: TFile | undefined): Promise<Map<string, any>> {
 	if (!file) return new Map();
 
-	const content = await this.app.vault.read(file);
+	const content = await getCtx().app.vault.read(file);
 	const doc = parseDocument(content);
 	const items = doc.contents;
 
@@ -97,18 +105,13 @@ export async function setFileProps(file: TFile | undefined, newPropsMap: Map<str
 		doc.set(key, value);
 	}
 
-	console.log(doc);
-
 	const newFrontmatterStr = `---\n${doc.toString()}---`;
 
-	console.log(newFrontmatterStr);
-
-	const rawContent = await this.app.vault.read(file);
+	const rawContent = await getCtx().app.vault.read(file);
 	const markdownBody = rawContent.replace(/^---[\s\S]*?---\n?/, '');
 	const finalContent = `${newFrontmatterStr}\n${markdownBody}`;
 
-	await this.app.vault.modify(file, finalContent);
-
+	await getCtx().app.vault.modify(file, finalContent);
 }
 
 export async function applyTemplateToNewFile(file: TFile) {
@@ -117,24 +120,22 @@ export async function applyTemplateToNewFile(file: TFile) {
 
 	const templateContent = await getCtx().app.vault.read(templateFile);
 	await getCtx().app.vault.modify(file, templateContent);
-
 }
 
-export function isTemplateCoherentToParentTemplate(
+export async function isTemplateCoherentToParentTemplate(
 	templateFile: TFile
-): { isValid: boolean, neededProps: Set<string>, extraProps: Set<string> } {
+): Promise<{ isValid: boolean, neededProps: Set<string>, extraProps: Set<string> }> {
 
 	const parentTemplateFile = getTemplateOfFile(templateFile);
 	if (!parentTemplateFile) {
 		return { isValid: true, neededProps: new Set(), extraProps: new Set() };
 	}
 
-	// Lettura istantanea dalla cache
-	const templateProps = getFileProps(templateFile) ?? {};
-	const parentProps = getFileProps(parentTemplateFile) ?? {};
+	const templateProps = await getFileProps(templateFile);
+	const parentProps = await getFileProps(parentTemplateFile);
 
-	const templatePropsSet = new Set(Object.keys(templateProps));
-	const parentPropsSet = new Set(Object.keys(parentProps));
+	const templatePropsSet = new Set(templateProps.keys());
+	const parentPropsSet = new Set(parentProps.keys());
 
 	// Rimuove 'position' che è una chiave inserita automaticamente da Obsidian nella cache
 	templatePropsSet.delete('position');
@@ -147,57 +148,4 @@ export function isTemplateCoherentToParentTemplate(
 		neededProps: parentPropsSet.difference(intersection),
 		extraProps: templatePropsSet.difference(intersection),
 	};
-}
-
-
-// ESISTE SOLO PER COMPATIBILITà COL SUPPORTO DI SPOTIFY
-/**
- * Conforma una stringa con la convenzione delle proprietà di Obsidian per evitare errori.
- *
- * @param {string} s - Stringa di cui fare l'escape.
- * @returns {string} Escaped string.
- */
-export function escapeFilePropertyStrings(s: string): string {
-	if (s.includes(":")) {
-		if (!s.includes('"')) {
-			return `"${s}"`;
-		}
-		else if (!s.includes("'")) {
-			return `'${s}'`;
-		}
-		else {
-			return `"${s.replace(/"/g, '\\\"')}"`;
-		}
-	}
-	if (s.startsWith("'")) {
-		if (!s.includes('"')) {
-			return `"${s}"`;
-		}
-		else {
-			return `"${s.replace(/"/g, '\\\"')}"`;
-		}
-	}
-	else if (s.startsWith('"')) {
-		if (!s.includes("'")) {
-			return `'${s}'`;
-		}
-		else {
-			return `"${s.replace(/"/g, '\\\"')}"`;
-		}
-	}
-	else if (s.startsWith("`")) {
-		if (!s.includes('"')) {
-			return `"${s}"`;
-		}
-		else if (!s.includes("'")) {
-			return `'${s}'`;
-		}
-		else {
-			return `"${s.replace(/"/g, '\\\"')}"`;
-		}
-	}
-	else {
-		return s;
-	}
-
 }

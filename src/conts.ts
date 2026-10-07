@@ -1,2 +1,1 @@
-
-export const SECRET_SETTINGS_FILENAME = "secret-settings.json";
+export const TEMPLATE_FILENAME = "!Template.md";

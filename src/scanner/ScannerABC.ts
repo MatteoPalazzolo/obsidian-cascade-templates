@@ -1,4 +1,5 @@
-import { App, Modal, Notice, setIcon, TFile } from "obsidian";
+import { Modal, Notice, setIcon, TFile } from "obsidian";
+import { TEMPLATE_FILENAME } from "../conts";
 
 export enum AllertLevel {
     Suggestion,
@@ -96,7 +97,7 @@ export abstract class ScannerABC {
         }
         
         this.positive.
-            filter( f => f.name !== "!Template.md" ).
+            filter( f => f.name !== TEMPLATE_FILENAME ).
             // sort by name in ascending order 
             // https://stackoverflow.com/questions/43311121/sort-an-array-of-objects-in-typescript
             sort((a, b) => (a.name < b.name ? -1 : 1)).

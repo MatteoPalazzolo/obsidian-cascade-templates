@@ -1,12 +1,12 @@
-import { MarkdownView, Plugin, setIcon, WorkspaceLeaf } from "obsidian";
+import { Plugin, setIcon } from "obsidian";
 import { createElInline } from "../utils/dom";
 import {
 	getActiveMarkdownFile, getActiveMarkdownView,
 	getFileProps,
 	getTemplateOfFile,
 	setFileProps,
-} from "../utils/templateAPI";
-import { mergeSecondOnFirstMap, computeMapConformance, type MapConformanceStatus } from "../utils/mapOperations";
+} from "../core/templateAPI";
+import { mergeSecondOnFirstMap } from "../core/mapOperations";
 
 let reconformButtonDiv: HTMLDivElement | undefined;
 let currentObserver: MutationObserver | undefined;

@@ -5,8 +5,8 @@ import {
 	getActiveMarkdownView,
 	getFileProps,
 	getTemplateOfFile,
-} from "../utils/templateAPI";
-import { computeMapConformance, type MapConformanceStatus } from "../utils/mapOperations";
+} from "../core/templateAPI";
+import { computeMapConformance, type MapConformanceStatus } from "../core/mapOperations";
 
 const STATUS_CONFIG: Record<MapConformanceStatus, { icon: string; label: string; style: Partial<CSSStyleDeclaration> }> = {
 	ok:      { icon: 'circle-check-big',   label: 'Conforme al template',                    style: { color: 'var(--text-success)' } },

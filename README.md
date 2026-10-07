@@ -1,52 +1,46 @@
-# TsKx (TypeScript picKaXe)
+# Cascade Templates
 
-## Intro
-Ho iniziato a sviluppare questa estensione di obsidian per facilitare l'archiviazione di media nel mio database.
+A modular cascading templating system for [Obsidian](https://obsidian.md).
 
-Il progetto è stato pensato per essere ben organizzato, facilmente mantenibile e estendibile a distanza di molto tempo. Per questi motivi ho cercato di prestare massima attenzione alla struttura del codice.
+Each folder can hold a `!Template.md` file. A note inherits the closest template found walking up its parent folders, so templates cascade down the vault hierarchy and can be overridden per folder.
 
-Si tratta di una serie di tool comodi per la gestione del mio archivio personale, che presenta musica, film, videogiochi, anime e libri.
+## Features
 
-### Image Scraper
-Si tratta di una finestra che ho programmato per facilitare la scelta delle immagini da aggiungere alla carousel di ogni opera.
+### Cascading templates
+Place a `!Template.md` in a folder. Any note inside that folder (or in one of its subfolders without a more specific template) is associated to it.
 
-Quando viene premuto il tasto cerca, dopo aver inserito il titolo e aver selezionato gli scraper da attivare per questa ricerca, il programma si occuperà di cercare immagini dai siti selezionati le elencherà in una griglia.
+A template applies to the folder that contains it and to all its descendants, until a nested `!Template.md` takes over. This makes it possible to build progressively more specific schemas while keeping shared properties defined once.
 
-Ogni immagine e affiancata da una checkbox per facilitare la selezione di molteplici elementi.
+### Auto-apply on new notes
+When a new untitled note is created, the associated template content is applied automatically, giving each note a coherent starting point.
 
-Le immagini visualizzate nella prima griglia di immagini sono quelle già presenti nella carousel e possono essere comodamente rimosse deselezionando la checkbox corrispondente.
+### Template status icon
+While a note is open, the metadata panel shows an icon describing its relation to the associated template:
 
-![immage_scraper](./screenshots/immage_scraper_1.png)
+- conforming to the template
+- containing extra properties
+- missing properties required by the template
 
-I link alle varie immagini vengono collezionati e stampati come testo (uno per riga) in una gallery, un elemento custom che ho programmato per assenza di alternative migliori.
+### Reconform from template
+A `Reconform from Template` button in the metadata panel merges the template properties into the current note, filling missing defaults while preserving existing values.
 
-![immage_scraper](./screenshots/immage_scraper_2.png)
+### Template scanner
+A scanner that walks the vault and lists every note whose frontmatter is not coherent with its associated template.
 
-Questo elemento, quando si passa dalla modalità di modifica a quella di visualizzazione si trasforma in una carousel che ho scritto da zero in typescript vanilla.
+## How it works
 
-![immage_scraper](./screenshots/immage_scraper_3.gif)
+Property handling is YAML frontmatter based and preserves the original ordering of keys. The core modules are:
 
-### Import From Link
+- `src/core/templateAPI.ts` - template resolution and frontmatter read/write
+- `src/core/mapOperations.ts` - merge and conformance logic
+- `src/features/` - UI integrations (status icon, reconform button)
+- `src/scanner/` - vault-wide coherence scanner
 
-Da quando ho iniziato a includere la musica in questa raccolta, mi sono reso conto che ci voleva più tempo a aggiungere manualmente una canzone alla collezione piuttosto che ascoltarla... e dopo un po' si è dimostrato non esattamente comodo.
+## Development
 
-Ho quindi optato per sfruttare l'API di Spotify. Ora basta incollare il link della canzone / artista / album e in automatico verranno recuperate tutte le informazioni e organizzate in documenti nelle apposite cartelle.
-
-Eventualmente, con poca difficoltà, è possibile estendere l'import automatico per media che vanno oltre alla musica, ma al momento non ne ho necessità.
-
-![import_from_link](./screenshots/import_from_link.png)
-
-### Issues Scanner
-
-Questa è l'ultima feature a cui ho lavorato prima di mettere in pausa il progetto, si tratta di uno scanner che usando regex e criteri vari, segnala tutti i file in cui ci sono cose che non vanno o da modificare.
-
-Al momento segnala solo i file che contengono i tag #TODO o #FILL, ma avevo in programma di far notificare i file che non rispettano i template da cui sono stati generati, con annesso pulsante pre un fix automatico.
-
-Un problema del me del futuro quando tornerà a lavorare al progetto :)
-
-![issues_scanner](./screenshots/issues_scanner.png)
-
-## Cmd
 ```cli
+npm install
 npm run dev
 ```
+
+Build with `npm run build`.
