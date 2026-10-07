@@ -1,0 +1,11 @@
+{
+	"id": "obsidian-tools",
+	"name": "Obsidian Tools",
+	"version": "1.0.0",
+	"minAppVersion": "0.15.0",
+	"description": "",
+	"author": "palazz",
+	"authorUrl": "https://obsidian.md",
+	"fundingUrl": "https://obsidian.md/pricing",
+	"isDesktopOnly": false
+}
