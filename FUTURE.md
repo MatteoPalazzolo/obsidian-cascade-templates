@@ -10,8 +10,7 @@ Obiettivo: un sistema di templating a cascata funzionale, solido e pubblicabile 
 
 ## Decisioni di design (confermate)
 
-- **Toolbar nel pannello properties**: deve comparire in **ogni nota visibile** (split pane), non
-  solo nella nota attiva → serve un'istanza per `MarkdownView` (WeakMap).
+- **Toolbar nel pannello properties**: deve comparire in **ogni nota visibile** (split pane), non solo nella nota attiva → serve un'istanza per `MarkdownView` (WeakMap).
 - **Revert**: una sola voce di undo, disponibile **fino al cambio scheda/file**, poi azzerata.
 - **Hard Reconform**: rimuove solo le proprietà extra (non presenti nel template), mantenendo i
   valori del file per le chiavi condivise. Corrisponde a `mergeSecondOnFirstMap(template, file, false)`.
@@ -20,12 +19,11 @@ Obiettivo: un sistema di templating a cascata funzionale, solido e pubblicabile 
 - **Settings**: introdotta a breve con le opzioni minime: template filename, auto-apply on/off,
   scanner scope (+ esclusioni).
 - **Scanner**: resta una **Modal** (nessuna View persistente).
-- **Stringhe sorgente**: standardizzate in **inglese** (commenti liberi).
+- **Stringhe sorgente**: standardizzate in **inglese** (nuovi commenti in inglese caratterizzati sempre dal prefisso AI per distinguere chi li scrive).
 - **Command palette**: nessun nuovo comando per ora.
 - **Ordine sessioni**: **panel prima, poi fondamenta/settings, poi scanner, poi community**.
 - **Semantica di cascata**: confermato "nearest template wins" + disciplina. Ogni template
-  *dovrebbe* includere le prop del parent; se ne manca alcune è un errore da segnalare (non un
-  merge automatico dell'intera catena).
+  *dovrebbe* includere le prop del parent; se ne manca alcune è un errore da segnalare (non un merge automatico dell'intera catena).
 
 ---
 
