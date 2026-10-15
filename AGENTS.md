@@ -46,3 +46,9 @@ TypeScript source bundled by esbuild into `main.js`. Single package, no test sui
 ## User Guidelines
 - non toccare mai comandi di github in scrittura, ho disabilitato la scrittura nella cartella .git, ogni tentativo sarà negato, voglio avere controllo completo del versioning in autonomia
 - commenta estensivamente sia file che codice descrivendo il ruolo svolto dal rispettivo file o funzione o classe o chi per esso all'interno dell'architettura del programma, in modo che io possa facilmente orientarmi con uno sguardo ad alto livello
+- commenta estensivamente sia file che codice descrivendo il ruolo svolto dal rispettivo file o 
+funzione o classe o chi per esso all'interno dell'architettura del programma, in modo che io poss
+a facilmente orientarmi con uno sguardo ad alto livello
+- il prodotto deve risultare NON invasivo, non considerare mai soluzioni automatiche di reconfor
+m a cascata se non specificato da una feature gestita dall'UI dello scanner per esempio, le autom
+azioni in una nota devono essere sempre circoscritte alla nota stessa
