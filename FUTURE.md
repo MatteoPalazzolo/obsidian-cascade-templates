@@ -23,6 +23,7 @@ Riga del pannello Properties:
 - **Nessun undo**.
 - Il pannello è implementato in due moduli separati (`reconformButton.ts`, `templateStatusIcon.ts`)
   legati alla view attiva (non per-view).
+USER ANSWER: sentiti libero di ristrutturare completamente quella parte di codice, anche fondendo i file se lo ritieni necessario.
 
 ---
 
@@ -73,14 +74,15 @@ Riga del pannello Properties:
 
 1. **Compatibilità `Set` TC39** — `isTemplateCoherentToParentTemplate` usa `intersection`/
    `isSubsetOf`/`difference`; con `isDesktopOnly: false` su mobile datato si rischia un crash a
-   runtime. Sostituire con helper puri e rimuovere `types/set-methods.d.ts`.
+   runtime. Sostituire con helper puri e rimuovere `types/set-methods.d.ts`. **Chiuso in A1**.
 2. **`setFileProps` fragile** — il loop `Object.entries(newPropsMap)` su una `Map` è un no-op: si
    affida interamente a `new Doc(map)`. Va costruito esplicitamente lo `YAMLMap` iterando
    `map.entries()`, curando la formattazione del blocco frontmatter (`---`, riga vuota, `...`).
+   **Chiuso in A3**.
 3. **Performance scanner** — `runAllScanner` fa `vault.read()` per ogni file ma `CoherenceScanner`
    ignora `content` e usa la cache. Rimuovere il read; tutto su `metadataCache`.
 4. **Nessuna Settings tab** — per la community serve; vedi Sessione D.
-5. **`console.log` residuo** in `src/utils/dom.ts` (`createElInline`, `customData`).
+5. **`console.log` residuo** in `src/utils/dom.ts` (`createElInline`, `customData`). **Chiuso in A5**.
 6. **Bug visibilità pannello** — `refreshButton`/`refreshIcon` rimuovono gli elementi quando
    `getActiveViewOfType(MarkdownView)` è `null` (focus su search/explorer). Risolto dall'istanza
    per-view della Sessione C.
@@ -101,16 +103,16 @@ Riga del pannello Properties:
 
 Obiettivo: tutto il "motore" necessario alla UI, senza toccare l'interfaccia. Sicura da revertire.
 
-- [ ] **A1** `src/core/setOperations.ts` con helper puri (`intersection`, `difference`, `isSubsetOf`);
+- [x] **A1** `src/core/setOperations.ts` con helper puri (`intersection`, `difference`, `isSubsetOf`);
       usali in `templateAPI` e rimuovi `types/set-methods.d.ts` (chiude il Rischio 1).
-- [ ] **A2** `getFilePropsMapFromCache(file): Map<string, any>` in `templateAPI` (Map ordinata, scarta
+- [x] **A2** `getFilePropsMapFromCache(file): Map<string, any>` in `templateAPI` (Map ordinata, scarta
       `position`), riusabile da UI e scanner.
-- [ ] **A3** Hardening `setFileProps`/`getFileProps`: `YAMLMap` esplicito iterando `map.entries()`,
+- [x] **A3** Hardening `setFileProps`/`getFileProps`: `YAMLMap` esplicito iterando `map.entries()`,
       formattazione frontmatter corretta (chiude il Rischio 2).
-- [ ] **A4** `reconformFile(file, mode)` unico, con `mode ∈ { add-missing, remove-extra, reset-defaults }`,
+- [x] **A4** `reconformFile(file, mode)` unico, con `mode ∈ { add-missing, remove-extra, reset-defaults }`,
       costruito su `mergeSecondOnFirstMap` + `computeMapConformance`. Restituisce `boolean` (se ha
       modificato qualcosa) per pilotare il refresh.
-- [ ] **A5** Cleanup `console.log` in `src/utils/dom.ts` (chiude il Rischio 5).
+- [x] **A5** Cleanup `console.log` in `src/utils/dom.ts` (chiude il Rischio 5).
 
 ## Sessione B — History / Undo stack (core)
 

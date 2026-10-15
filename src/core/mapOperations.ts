@@ -47,3 +47,40 @@ export function computeMapConformance(
 
 	return 'ok';
 }
+
+/**
+ * AI: Structural, order-sensitive equality between two property maps.
+ *
+ * Role in the architecture:
+ * Used by `reconformFile` to decide whether an action actually changed the
+ * frontmatter. Key order is part of the comparison because the YAML output
+ * preserves it, so a pure reordering counts as a change worth writing.
+ * Values are compared by identity first, then by JSON representation so nested
+ * arrays/objects (e.g. list-valued properties) are handled correctly.
+ */
+export function areMapsEqual(first: Map<string, any>, second: Map<string, any>): boolean {
+	if (first.size !== second.size) return false;
+
+	const firstEntries = [...first.entries()];
+	const secondEntries = [...second.entries()];
+
+	for (let i = 0; i < firstEntries.length; i++) {
+		const [firstKey, firstValue] = firstEntries[i];
+		const [secondKey, secondValue] = secondEntries[i];
+
+		if (firstKey !== secondKey) return false;
+		if (!areValuesEqual(firstValue, secondValue)) return false;
+	}
+
+	return true;
+}
+
+/** AI: Best-effort deep value comparison, cheap for scalar frontmatter values. */
+function areValuesEqual(first: unknown, second: unknown): boolean {
+	if (first === second) return true;
+
+	const areObjects = typeof first === 'object' && first !== null
+		&& typeof second === 'object' && second !== null;
+
+	return areObjects && JSON.stringify(first) === JSON.stringify(second);
+}

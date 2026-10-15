@@ -12,7 +12,6 @@ export function createElInline<K extends keyof HTMLElementTagNameMap>(
 
 	if (customData) {
 		Object.entries(customData).forEach(([chiave, valore]) => {
-			console.log(chiave, valore);
 			el.setAttribute(chiave, valore);
 		});
 	}

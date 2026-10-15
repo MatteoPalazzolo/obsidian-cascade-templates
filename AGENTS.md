@@ -16,6 +16,7 @@ TypeScript source bundled by esbuild into `main.js`. Single package, no test sui
 ## Gotchas
 - `main.js` is a generated, gitignored bundle. Never edit it; rebuild instead.
 - New/changed files must be LF (`.editorconfig` `end_of_line = lf`).
+- Ti trovi all'interno di una sandbox che gira su WSL con il progetto condiviso in un mount da una cartella di windows, tienine conto.
 
 ## Architecture
 - `main.ts` - plugin entry (`onload`/`onunload`); wire modules here.

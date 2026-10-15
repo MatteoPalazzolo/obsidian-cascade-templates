@@ -1,6 +1,6 @@
 import { TFile } from "obsidian";
 import { AllertLevel, ScannerABC } from "./ScannerABC";
-import { getFilePropsFromCache, getTemplateOfFile } from "../core/templateAPI";
+import { getFilePropsMapFromCache, getTemplateOfFile } from "../core/templateAPI";
 import { computeMapConformance } from "../core/mapOperations";
 import { TEMPLATE_FILENAME } from "../conts";
 
@@ -19,18 +19,9 @@ export class CoherenceScanner extends ScannerABC {
         const template = getTemplateOfFile(file);
         if (!template) return false;
 
-        const toMap = (props: Record<string, any> = {}) => {
-            const map = new Map<string, any>();
-            for (const [key, value] of Object.entries(props)) {
-                // 'position' è inserita automaticamente da Obsidian nella cache
-                if (key === 'position') continue;
-                map.set(key, value);
-            }
-            return map;
-        };
-
-        const fileProps = toMap(getFilePropsFromCache(file));
-        const templateProps = toMap(getFilePropsFromCache(template));
+        // AI: shared accessor (handles the 'position' key injected by Obsidian).
+        const fileProps = getFilePropsMapFromCache(file);
+        const templateProps = getFilePropsMapFromCache(template);
 
         return computeMapConformance(fileProps, templateProps) !== 'ok';
     }
