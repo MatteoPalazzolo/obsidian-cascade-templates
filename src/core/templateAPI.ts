@@ -1,8 +1,9 @@
 import {MarkdownView, Plugin, TAbstractFile, TFile} from "obsidian";
 import {isMap, isPair, isScalar, parseDocument, Document as Doc} from 'yaml';
-import {TEMPLATE_FILENAME} from "../conts";
+import {getSettings, getTemplateFilename, isTemplateFile} from "../settings";
 import {difference, isSubsetOf} from "./setOperations";
 import {areMapsEqual, mergeSecondOnFirstMap} from "./mapOperations";
+import {evaluateTemplaterValue, hasTemplaterSyntax, isTemplaterAvailable} from "./templaterBridge";
 
 let ctx: Plugin | undefined;
 
@@ -42,7 +43,7 @@ export function getTemplateOfFile(file: TFile | undefined): TFile | undefined {
 	while (f.parent) {
 		f = f.parent;
 		const folderPath = f.path === "/" ? "" : f.path + "/";
-		const templateFile = getCtx().app.vault.getAbstractFileByPath(folderPath + TEMPLATE_FILENAME);
+		const templateFile = getCtx().app.vault.getAbstractFileByPath(folderPath + getTemplateFilename());
 
 		if (templateFile instanceof TFile && templateFile.path !== file.path) {
 			return templateFile;
@@ -218,8 +219,44 @@ export async function reconformFile(file: TFile | undefined, mode: ReconformMode
 	// Nothing to write: skip the modify() to avoid needless cache churn/events.
 	if (areMapsEqual(currentProps, nextProps)) return false;
 
+	// AI: only pay the (possibly side-effecting) Templater step when the merge
+	// already changed something — see the helper below.
+	nextProps = await resolveTemplaterExpressions(file, nextProps);
+
+	if (areMapsEqual(currentProps, nextProps)) return false;
+
 	await setFileProps(file, nextProps);
 	return true;
+}
+
+/**
+ * AI: Optional Templater step of the reconform (Sessione G).
+ *
+ * Runs only when ALL of these hold: the setting is enabled, the file is a note
+ * (templates keep their expressions raw — they are the source), Templater is
+ * available and the value is a string containing `<%`. Every value that cannot
+ * be rendered keeps its raw form, so the operation never breaks the note.
+ */
+async function resolveTemplaterExpressions(file: TFile, props: Map<string, any>): Promise<Map<string, any>> {
+	if (!getSettings().evaluateTemplaterInNotes) return props;
+	if (isTemplateFile(file)) return props;
+
+	const app = getCtx().app;
+	if (!isTemplaterAvailable(app)) return props;
+	if (![...props.values()].some(hasTemplaterSyntax)) return props;
+
+	const resolved = new Map<string, any>();
+	for (const [key, value] of props.entries()) {
+		if (!hasTemplaterSyntax(value)) {
+			resolved.set(key, value);
+			continue;
+		}
+
+		const rendered = await evaluateTemplaterValue(app, value, file);
+		resolved.set(key, rendered ?? value);
+	}
+
+	return resolved;
 }
 
 export async function applyTemplateToNewFile(file: TFile) {

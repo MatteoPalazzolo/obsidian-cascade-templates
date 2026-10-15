@@ -63,3 +63,71 @@
 
     }
 }
+
+/* AI: per-view metadata panel toolbar (Sessione C).
+   Layout: [status] [Add property] [reconform] [undo] inside .metadata-content.
+   Only native Obsidian variables are used so light/dark/custom themes work. */
+.cascade-templates-status {
+    display: inline-flex;
+    align-items: center;
+    margin-left: var(--size-2-2);
+    margin-right: 0;
+
+    /* status modifier emitted by metadataPanel.ts (one at a time) */
+    &.is-ok {
+        color: var(--text-success);
+    }
+
+    &.is-extra {
+        color: var(--text-warning);
+    }
+
+    &.is-missing {
+        color: var(--text-error);
+    }
+
+    &.is-none {
+        color: var(--text-faint);
+    }
+}
+
+.cascade-templates-toolbar {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--size-4-1);
+    margin-left: var(--size-2-3);
+}
+
+.cascade-templates-action {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--size-4-1);
+
+    padding: var(--size-2-1) var(--size-2-3);
+    border-radius: var(--radius-s);
+
+    color: var(--text-muted);
+    font-size: var(--font-ui-smaller);
+    line-height: 1;
+    white-space: nowrap;
+    cursor: pointer;
+
+    &:hover {
+        color: var(--text-normal);
+        background-color: var(--background-modifier-hover);
+    }
+
+    & > .text-button-icon {
+        display: inline-flex;
+        align-items: center;
+    }
+
+    /* applied by metadataPanel.ts when the action is unavailable (empty
+       history / no template to reconform from) */
+    &.cascade-templates-disabled {
+        color: var(--text-faint);
+        opacity: 0.5;
+        cursor: default;
+        pointer-events: none;
+    }
+}

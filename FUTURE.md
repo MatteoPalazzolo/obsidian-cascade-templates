@@ -67,6 +67,14 @@ USER ANSWER: sentiti libero di ristrutturare completamente quella parte di codic
 - **Non invasività**: nessun reconform automatico a cascata; le automazioni in una nota restano
   **circoscritte alla nota stessa**. Eventuali cascate solo su azione esplicita (o feature dello
   scanner).
+- **Templater**: mai dipendenza obbligatoria. Ponte opzionale e parziale (solo proprietà del
+  frontmatter, solo se la voce è attiva nelle settings), senza doppia valutazione rispetto a
+  `trigger_on_file_creation`. **Vale solo per i file nota**: i `!Template.md` conservano sempre le
+  espressioni raw (sono la sorgente, non vanno materializzati). Default: comportamento attuale
+  (copia fedele). Vedi Sessione G.
+- **Template vs nota**: stesso motore, criteri di conformità e icone distinti (nota →
+  `computeMapConformance`; template → `isTemplateCoherentToParentTemplate`). Ogni differenza di
+  comportamento tra i due tipi va resa esplicita come questa, non come eccezione sparsa.
 
 ---
 
@@ -81,7 +89,8 @@ USER ANSWER: sentiti libero di ristrutturare completamente quella parte di codic
    **Chiuso in A3**.
 3. **Performance scanner** — `runAllScanner` fa `vault.read()` per ogni file ma `CoherenceScanner`
    ignora `content` e usa la cache. Rimuovere il read; tutto su `metadataCache`.
-4. **Nessuna Settings tab** — per la community serve; vedi Sessione D.
+4. **Nessuna Settings tab** — per la community serve; vedi Sessione D. **Parzialmente chiuso**:
+   esiste la Settings tab minima (nome template + toggle Templater); restano le altre voci di D1.
 5. **`console.log` residuo** in `src/utils/dom.ts` (`createElInline`, `customData`). **Chiuso in A5**.
 6. **Bug visibilità pannello** — `refreshButton`/`refreshIcon` rimuovono gli elementi quando
    `getActiveViewOfType(MarkdownView)` è `null` (focus su search/explorer). Risolto dall'istanza
@@ -137,32 +146,62 @@ ogni chiamata (prune lazy) e in modo proattivo da `registerHistoryLifecycle(view
 
 Obiettivo: la nuova toolbar per ogni nota visibile. È il cuore della modifica UI.
 
-- [ ] **C1** `src/features/metadataPanel.ts`: una toolbar per **ogni `MarkdownView`** visibile
+- [x] **C1** `src/features/metadataPanel.ts`: una toolbar per **ogni `MarkdownView`** visibile
       (`WeakMap<MarkdownView, PanelUI>`), gestita su `active-leaf-change`/`file-open`/`layout-change`
       + `MutationObserver` scoped per sopravvivere ai re-render del pannello.
-- [ ] **C2** Indicatore di stato a **sinistra** di `Add property`:
+- [x] **C2** Indicatore di stato a **sinistra** di `Add property`:
       nota → `circle-*` (ok/extra/missing); template → `file-check`/`file-x` confrontato col parent
       via `isTemplateCoherentToParentTemplate`; senza template → `circle-dashed` (o nascosto, vedi D).
-- [ ] **C3** Pulsante reconform **dinamico a 3 fasi** a destra di `Add property`, guidato da
+- [x] **C3** Pulsante reconform **dinamico a 3 fasi** a destra di `Add property`, guidato da
       `computeMapConformance` (add missing / remove extra / clear). Ogni click esegue la fase corrente
       via `reconformFile` e spinge uno snapshot in history (B1).
-- [ ] **C4** Pulsante **undo a stack** a destra del reconform: sempre presente, `disabled` + grigio
+- [x] **C4** Pulsante **undo a stack** a destra del reconform: sempre presente, `disabled` + grigio
       (`.cascade-templates-disabled`) quando `hasHistory(view)` è falso; il click fa `undo(view)` e
       ricalcola.
-- [ ] **C5** Etichette/tooltip in inglese + label contestuale ("Reconform from parent template" sui
+- [x] **C5** Etichette/tooltip in inglese + label contestuale ("Reconform from parent template" sui
       template). Icone: `list-restart` (fase 1), `list-x` (fase 2), `eraser` (fase 3), `undo-2` (undo).
-- [ ] **C6** Rimozione di `src/features/reconformButton.ts` e `src/features/templateStatusIcon.ts`;
+- [x] **C6** Rimozione di `src/features/reconformButton.ts` e `src/features/templateStatusIcon.ts`;
       wiring di `metadataPanel` in `main.ts`.
-- [ ] **C7** `styles.css`: classi della toolbar (`.cascade-templates-toolbar`, `-status`, `-action`,
+- [x] **C7** `styles.css`: classi della toolbar (`.cascade-templates-toolbar`, `-status`, `-action`,
       `-disabled`) con variabili CSS native di Obsidian.
+
+Note implementative (C): `metadataPanel.ts` è cablato in `main.ts` (C6) e gestisce tutto il pannello.
+Contratto DOM verificato live (Obsidian 1.x) via devtools:
+
+```
+.metadata-container
+  .metadata-content
+    .metadata-properties        (righe prop)
+    <span.cascade-templates-status>    ← status (C2), PRIMA dell'add button
+    .metadata-add-button                ← "Add property" nativo (primo match)
+    <div.cascade-templates-toolbar>     ← azioni (C3/C4), DOPO l'add button
+      .cascade-templates-action (reconform) + .cascade-templates-action (undo)
+```
+
+Dettagli utili:
+- Il `WeakMap` non è enumerabile → accanto c'è un `Set<MarkdownView>` di registro per `syncAll`/`clear`.
+- Stato/azioni si ricalcolano da `computeMapConformance` (nota) o `isTemplateCoherentToParentTemplate`
+  (template); senza template → `circle-dashed` + reconform disabilitato.
+- Dopo un click il refresh legge da **disco** (`fresh=true`) perché `vault.modify` risolve prima che
+  il `metadataCache` sia aggiornato: senza questo il pulsante non "avanzerebbe" sul posto.
+- Il `MutationObserver` fa solo **ri-aggancio** (niente ricalcolo per ogni mutazione del pannello);
+  l'aggiornamento dello stato è guidato dal listener `metadataCache.on('changed')` (debounce 200ms).
+- La label visibile del pulsante è la fase corrente; il tooltip è contestuale ("from template" /
+  "from parent template").
+
+Verifica: integrazione headless con moduli core reali + DOM/vault finti (33 assert, tutti verdi).
 
 ## Sessione D — Settings + fondamenta
 
 - [ ] **D1** `src/settings.ts` + `PluginSettingTab` con `loadData`/`saveData`: template filename,
       auto-apply on/off, scanner scope (+ esclusioni), comportamento senza template (hide/disabled).
-- [ ] **D2** `TEMPLATE_FILENAME` letto dal context (non hardcoded); il panel legge il filename via
-      `getTemplateFilename()`.
-- [ ] **D3** Refresh della UI panel/scanner al cambio settings (listener da `onSettingsChange`).
+      *Fatto finora: Template file name + toggle Templater. Restano auto-apply on/off, scanner scope,
+      comportamento senza template.*
+- [x] **D2** Nome del file template configurabile: default **`!Template`** (basename, `.md`
+      implicito), salvato nelle settings; helper `getTemplateFilename()` (basename → `!Template.md`)
+      e `isTemplateFile(file)`, riusati da panel, scanner e dal bridge Templater (G2). I vault
+      esistenti restano compatibili (`!Template` + `.md` = `!Template.md`).
+- [x] **D3** Refresh della UI panel/scanner al cambio settings (listener da `onSettingsChange`).
 
 ## Sessione E — Scanner (resta Modal)
 
@@ -171,6 +210,51 @@ Obiettivo: la nuova toolbar per ogni nota visibile. È il cuore della modifica U
 - [ ] **E3** Secondo scanner: **template vs parent** (stessa regola delle icone); etichette esplicite
       extra/missing per file.
 - [ ] **E4** Scope/esclusioni dalle settings + stringhe in inglese.
+
+## Sessione G — Integrazione opzionale con Templater
+
+Contesto: sul vault Templater è già attivo (`trigger_on_file_creation: true`). Il plugin non lo
+conosce e copia i valori del template **verbatim**: se un `!Template.md` contiene `<% … %>` in una
+proprietà, un reconform/clear scrive quella **stringa letterale** nella nota, perché Templater gira
+solo alla **creazione** del file, non su `vault.modify`. Serve quindi un ponte **opt-in e
+circoscritto**, non un rimpiazzo di Templater. Dipende da D1 (settings) per l'interruttore.
+
+Principi proposti:
+- Default **off**: senza voce attiva, nessun cambiamento di comportamento e zero dipendenze.
+- Intervento **solo** sui valori di frontmatter che contengono sintassi Templater (`<%`); il corpo
+  della nota non viene mai processato.
+- Intervento **solo sui file nota**: i `!Template.md` non vengono mai valutati (le espressioni
+  restano raw ed è così che devono essere); il riconform di un template verso il parent copia i
+  valori raw.
+- **Mai doppia valutazione**: la creazione resta a Templater (`trigger_on_file_creation`); il bridge
+  agisce solo su reconform / apply esplicito.
+- **Degrado silenzioso**: Templater assente/disabilitato o valutazione fallita → si tiene il valore
+  raw (con avviso, mai eccezione).
+- Dipendenza **soft a runtime** (lookup di `app.plugins.plugins["templater-obsidian"]`, nessun import
+  a build-time): il plugin resta caricabile e pubblicabile anche senza Templater installato.
+
+- [x] **G1** `src/core/templaterBridge.ts`: `hasTemplaterSyntax(value)` + `evaluateTemplaterValue(expr,
+      targetFile): Promise<string | null>` con lookup runtime e feature detection; logica pura dove
+      possibile (testabile).
+- [x] **G2** Integrazione in `reconformFile`: se l'opzione è attiva **e il file è una nota** (mai un
+      `!Template.md`), valuta i soli valori **stringa** con sintassi prima di `setFileProps`; fallback
+      al raw valore per valore. Nessun cambio di firma visibile verso il panel.
+- [x] **G3** Setting "Evaluate Templater scripts in notes" (default **off**), attivo solo se Templater
+      è rilevato; descrizione che cita il rischio di esecuzione di `<%*` (codice arbitrario del vault).
+- [x] **G4** Guardrail non invasivo: se l'opzione è off e il template contiene `<% … %>`, il tooltip
+      del pulsante reconform avvisa che quelle espressioni verrebbero incollate come testo.
+- [x] **G5** Test: valore con/senza sintassi, Templater assente, valutazione fallita, valore non
+      stringa, e "mai sui template" (headless, 16 assert).
+
+Note implementative (G): API usata = `create_running_config(undefined, targetFile,
+RunMode.OverwriteActiveFile=2)` + `parse_template(config, source)`, tutto dietro feature detection
+(`parse_template`/`create_running_config` devono esistere) e `try/catch`. La valutazione avviene solo
+se il merge ha già prodotto un cambiamento, così non si esegue codice per nulla. `evaluateTemplaterInNotes`
+è in `settings.ts` e il suo cambio passa da `onSettingsChange` (D3).
+
+Rischi/limiti: `parse_template` non è API pubblica di Templater → va sempre degradato con grazia;
+in v1 le espressioni il cui risultato è una lista/oggetto non vengono riconvertite (restano stringa);
+`tp.system.prompt` aprirebbe la sua UI durante il reconform (responsabilità dell'autore del template).
 
 ## Sessione F — Community readiness
 

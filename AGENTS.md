@@ -19,12 +19,16 @@ TypeScript source bundled by esbuild into `main.js`. Single package, no test sui
 - Ti trovi all'interno di una sandbox che gira su WSL con il progetto condiviso in un mount da una cartella di windows, tienine conto.
 
 ## Architecture
-- `main.ts` - plugin entry (`onload`/`onunload`); wire modules here.
-- `src/core/templateAPI.ts` - template resolution + frontmatter read/write. Module-level plugin context: `init(this)` in onload, then use `getCtx().app` inside these functions, never `this.app`.
+- `main.ts` - plugin entry (`onload`/`onunload`); wire modules here (settings → core → UI).
+- `src/settings.ts` - user settings + persistence + `PluginSettingTab`; exposes `getTemplateFilename()` / `isTemplateFile()`.
+- `src/core/templateAPI.ts` - template resolution + frontmatter read/write + `reconformFile`. Module-level plugin context: `init(this)` in onload, then use `getCtx().app` inside these functions, never `this.app`.
 - `src/core/mapOperations.ts` - property merge + conformance (`ok`/`extra`/`missing`).
-- `src/features/` - metadata-panel UI (reconform button, status icon).
+- `src/core/setOperations.ts` - pure Set helpers (mobile-safe replacement of the TC39 Set methods).
+- `src/core/reconformHistory.ts` - per-`MarkdownView` undo stack (snapshot before each action).
+- `src/core/templaterBridge.ts` - optional runtime bridge to Templater (opt-in, notes only).
+- `src/features/metadataPanel.ts` - per-view metadata panel toolbar (status / reconform / undo).
 - `src/scanner/` - vault-wide coherence scanner (`TemplateScannerModal`, `ScannerABC` subclasses).
-- `src/conts.ts` - `TEMPLATE_FILENAME = "!Template.md"`.
+- `src/conts.ts` - static defaults only (`DEFAULT_TEMPLATE_BASENAME = "!Template"`).
 
 ## Domain rules
 - A note inherits the nearest ancestor `!Template.md` walking up its folder chain; nested templates override.
@@ -34,7 +38,7 @@ TypeScript source bundled by esbuild into `main.js`. Single package, no test sui
 
 ## Conventions
 - `tsconfig` `baseUrl "."`: `main.ts` imports use `src/...`, files under `src/` use relative imports. Match neighbors.
-- `types/set-methods.d.ts` augments global `Set` (`intersection`, `difference`, `isSubsetOf`, ...); `typeRoots` includes `./types`.
+- `types/` no longer augments `Set`: TC39 set methods are replaced by `src/core/setOperations.ts`.
 - `styles.css` uses native CSS nesting keyed by modal class (e.g. `.ScannerModal`).
 - Comments/source strings mix Italian and English; do not add comments unless asked.
 

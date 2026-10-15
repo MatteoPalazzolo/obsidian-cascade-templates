@@ -2,7 +2,7 @@ import { TFile } from "obsidian";
 import { AllertLevel, ScannerABC } from "./ScannerABC";
 import { getFilePropsMapFromCache, getTemplateOfFile } from "../core/templateAPI";
 import { computeMapConformance } from "../core/mapOperations";
-import { TEMPLATE_FILENAME } from "../conts";
+import { isTemplateFile } from "../settings";
 
 export class CoherenceScanner extends ScannerABC {
 
@@ -14,7 +14,7 @@ export class CoherenceScanner extends ScannerABC {
     autofix = false;
 
     _scan(file: TFile, content: string): boolean {
-        if (file.name === TEMPLATE_FILENAME) return false;
+        if (isTemplateFile(file)) return false;
 
         const template = getTemplateOfFile(file);
         if (!template) return false;
