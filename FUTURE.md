@@ -118,14 +118,20 @@ Obiettivo: tutto il "motore" necessario alla UI, senza toccare l'interfaccia. Si
 
 Obiettivo: la memoria delle modifiche, separata dalla UI così è testabile e revertibile da sola.
 
-- [ ] **B1** `src/core/reconformHistory.ts`: store **per `MarkdownView`** con stack di snapshot.
+- [x] **B1** `src/core/reconformHistory.ts`: store **per `MarkdownView`** con stack di snapshot.
       API minima: `push(view, Map)` prima di ogni azione, `undo(view)`, `hasHistory(view)`,
       `clear(view)`.
-- [ ] **B2** Azzeramento del solo stack della view quando: la view viene **chiusa** (leaf
+- [x] **B2** Azzeramento del solo stack della view quando: la view viene **chiusa** (leaf
       distrutto/`onunload`) oppure **il file della view viene sostituito** (stessa view, file
       diverso). **Non** azzerare al solo cambio scheda/leaf attivo.
-- [ ] **B3** Notifica ai listener (callback) quando lo stack cambia, così i pulsanti undo si
+- [x] **B3** Notifica ai listener (callback) quando lo stack cambia, così i pulsanti undo si
       abilitano/disabilitano senza polling.
+
+Note implementative (B): lo store vive in una `WeakMap<MarkdownView, Snapshot[]>` (la view chiusa
+sparisce da sola); il cambio file è rilevato confrontando il path dello snapshot con `view.file` a
+ogni chiamata (prune lazy) e in modo proattivo da `registerHistoryLifecycle(view)` via
+`file-open`/`layout-change`; `undo(view)` scrive già su disco tramite `setFileProps`. API extra:
+`onHistoryChange(listener)` → unsubscribe, `disposeHistory()` per l'`onunload`.
 
 ## Sessione C — UI pannello (feature principale)
 

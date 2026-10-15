@@ -45,6 +45,7 @@ TypeScript source bundled by esbuild into `main.js`. Single package, no test sui
 - CSS & Temi: Usa le variabili CSS native di Obsidian (es. --text-normal, --background-primary) per garantire che il plugin si adatti perfettamente sia al tema chiaro/scuro sia ai temi personalizzati.
 
 ## User Guidelines
+- alla fine dell'implementazione di uno o più punti suggeriscimi sempre cosa scrivere nel git commit che gestirò in autonomia
 - non toccare mai comandi di github in scrittura, ho disabilitato la scrittura nella cartella .git, ogni tentativo sarà negato, voglio avere controllo completo del versioning in autonomia
 - commenta estensivamente sia file che codice descrivendo il ruolo svolto dal rispettivo file o funzione o classe o chi per esso all'interno dell'architettura del programma, in modo che io possa facilmente orientarmi con uno sguardo ad alto livello
 - commenta estensivamente sia file che codice descrivendo il ruolo svolto dal rispettivo file o 

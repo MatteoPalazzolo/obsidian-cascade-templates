@@ -3,6 +3,10 @@ import {
 	init as initTemplateAPIModule,
 	registerTemplatezListener,
 } from 'src/core/templateAPI';
+import {
+	disposeHistory,
+	registerHistoryLifecycle,
+} from 'src/core/reconformHistory';
 import * as ReconformButton from 'src/features/reconformButton';
 import * as TemplateStatusIcon from 'src/features/templateStatusIcon';
 import { TemplateScannerModal } from 'src/scanner/TemplateScannerModal';
@@ -15,6 +19,7 @@ export default class extends Plugin {
 
 		// init modules
 		initTemplateAPIModule(this);
+		registerHistoryLifecycle(this);
 		ReconformButton.init(this);
 		TemplateStatusIcon.init(this);
 
@@ -30,6 +35,7 @@ export default class extends Plugin {
 	onunload() {
 		ReconformButton.clear();
 		TemplateStatusIcon.clear();
+		disposeHistory();
 	}
 
 }
