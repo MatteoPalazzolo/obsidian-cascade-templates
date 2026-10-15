@@ -52,6 +52,7 @@ TypeScript source bundled by esbuild into `main.js`. Single package, no test sui
 ## User Guidelines
 - alla fine dell'implementazione di uno o più punti suggeriscimi sempre cosa scrivere nel git commit che gestirò in autonomia
 - ogni qualvolta che ti chiedo un riferimento al codice ti chiederei di rispondermi con la notazione di vscode del tipo main.ts:42 o src/settings.md:5 ; crea dei link relativi all'interno di workspace/ e non menzionare workspace nei link stesso
+- considera NEXT.md readonly con delle mie considerazioni a caldo non strutturate a cui attingere a inizio sessione
 - non toccare mai comandi di github in scrittura, ho disabilitato la scrittura nella cartella .git, ogni tentativo sarà negato, voglio avere controllo completo del versioning in autonomia
 - commenta estensivamente sia file che codice descrivendo il ruolo svolto dal rispettivo file o funzione o classe o chi per esso all'interno dell'architettura del programma, in modo che io possa facilmente orientarmi con uno sguardo ad alto livello
 - commenta estensivamente sia file che codice descrivendo il ruolo svolto dal rispettivo file o 
