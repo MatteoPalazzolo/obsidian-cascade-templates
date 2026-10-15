@@ -33,12 +33,12 @@ Riga del pannello Properties:
 - **Layout riga**: `[indicatore di stato] [Add property] [reconform dinamico] [undo]`.
   L'indicatore resta a sinistra del pulsante nativo; i due pulsanti azione a destra.
 - **Pulsante reconform dinamico a stati** (un solo pulsante che cambia azione + etichetta + icona):
-  1. **Add missing** — `Reconform from template` (icona `list-restart`): aggiunge le prop presenti nel
+  1. **Add missing** — `Conform` (icona `wrench`): aggiunge le prop presenti nel
      template e assenti nel file, usando i valori di default del template; **preserva** i valori
      esistenti e le prop extra. (= `mergeSecondOnFirstMap(template, file, tail=true)`).
-  2. **Remove extra** — `Remove extra` (icona `list-x`): rimuove le prop non presenti nel template,
+  2. **Remove extra** — `Align` (icona `anvil`): rimuove le prop non presenti nel template,
      **preserva** i valori condivisi. (= `mergeSecondOnFirstMap(template, file, tail=false)`).
-  3. **Clear** — `Clear` (icona `eraser`, da confermare): riporta il frontmatter **esattamente** ai
+  3. **Clear** — `Clear` (icona `broom`, da confermare): riporta il frontmatter **esattamente** ai
      default del template (sovrascrive i valori condivisi e rimuove gli extra).
   Lo stato attivo è derivato da `computeMapConformance`: `missing`→fase 1, `extra`→fase 2,
   `ok`→fase 3. Dopo ogni click lo stato viene ricalcolato, quindi il pulsante "avanza" da solo
@@ -47,8 +47,10 @@ Riga del pannello Properties:
   l'undo **non** è limitato all'ultimo stato. Il pulsante undo è **sempre presente** a destra del
   reconform, ma **disabled e grigio** quando lo stack è vuoto. Nessun clear irreversibile.
 - **Hard Reconform**: eliminato come pulsante separato, assorbito nella **fase 2** del pulsante dinamico.
-- **History/Revert**: stack **per file**, azzerato al cambio file/scheda (come la vecchia decisione di
-  undo singolo). *(Punto aperto: se invece persistere per file riaprendo la nota. Da decidere a parte.)*
+- **History/Revert**: stack legato alla **`MarkdownView`** (non al file attivo globale). Passando da
+  una **scheda** all'altra e tornando indietro la history **resta**. Si azzera solo quando la view
+  viene **chiusa** oppure quando un **nuovo file sostituisce** quello corrente nella stessa view
+  (es. apertura di un link nello stesso pane).
 - **Set methods**: sostituire i metodi nativi TC39 (`Set.prototype.intersection`, `isSubsetOf`, ...)
   con helper puri, per compatibilità con WebView mobile datate.
 - **Settings**: template filename, auto-apply on/off, scanner scope (+ esclusioni), comportamento
@@ -114,9 +116,12 @@ Obiettivo: tutto il "motore" necessario alla UI, senza toccare l'interfaccia. Si
 
 Obiettivo: la memoria delle modifiche, separata dalla UI così è testabile e revertibile da sola.
 
-- [ ] **B1** `src/core/reconformHistory.ts`: store **per file** con stack di snapshot.
-      API minima: `push(file, Map)` prima di ogni azione, `undo(file)`, `hasHistory(file)`, `clear(file)`.
-- [ ] **B2** `clear(file)` al cambio file/leaf e `clear()` totale in `onunload` (nessun leak).
+- [ ] **B1** `src/core/reconformHistory.ts`: store **per `MarkdownView`** con stack di snapshot.
+      API minima: `push(view, Map)` prima di ogni azione, `undo(view)`, `hasHistory(view)`,
+      `clear(view)`.
+- [ ] **B2** Azzeramento del solo stack della view quando: la view viene **chiusa** (leaf
+      distrutto/`onunload`) oppure **il file della view viene sostituito** (stessa view, file
+      diverso). **Non** azzerare al solo cambio scheda/leaf attivo.
 - [ ] **B3** Notifica ai listener (callback) quando lo stack cambia, così i pulsanti undo si
       abilitano/disabilitano senza polling.
 
@@ -134,7 +139,8 @@ Obiettivo: la nuova toolbar per ogni nota visibile. È il cuore della modifica U
       `computeMapConformance` (add missing / remove extra / clear). Ogni click esegue la fase corrente
       via `reconformFile` e spinge uno snapshot in history (B1).
 - [ ] **C4** Pulsante **undo a stack** a destra del reconform: sempre presente, `disabled` + grigio
-      (`.cascade-templates-disabled`) quando `hasHistory` è falso; il click fa `undo` e ricalcola.
+      (`.cascade-templates-disabled`) quando `hasHistory(view)` è falso; il click fa `undo(view)` e
+      ricalcola.
 - [ ] **C5** Etichette/tooltip in inglese + label contestuale ("Reconform from parent template" sui
       template). Icone: `list-restart` (fase 1), `list-x` (fase 2), `eraser` (fase 3), `undo-2` (undo).
 - [ ] **C6** Rimozione di `src/features/reconformButton.ts` e `src/features/templateStatusIcon.ts`;
