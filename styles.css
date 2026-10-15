@@ -101,33 +101,36 @@
 .cascade-templates-action {
     display: inline-flex;
     align-items: center;
-    gap: var(--size-4-1);
+    gap: var(--size-2-2);
 
-    padding: var(--size-2-1) var(--size-2-3);
-    border-radius: var(--radius-s);
+    padding: var(--size-2-2);
+    padding-inline-start: var(--size-2-3);
+    border-radius: var(--button-radius);
 
     color: var(--text-muted);
-    font-size: var(--font-ui-smaller);
-    line-height: 1;
+
+    /* AI: mirror the native "Add property" button exactly. Obsidian renders that
+       button as a `.text-icon-button` styled by the metadata panel typography
+       (--metadata-label-font / --metadata-label-font-size = 0.875em -> 14px)
+       and by the panel line height. The base idle/hover/focus/icon states are
+       intentionally NOT redefined here: they already come from the native
+       `.text-icon-button` class this element also carries, so the injected
+       controls stay visually and behaviourally indistinguishable from the
+       native one (same padding, radius, gap, hover, :focus-visible ring). */
+    font-size: var(--metadata-label-font-size);
+    font-family: var(--metadata-label-font);
+    font-weight: var(--input-font-weight);
+    line-height: var(--line-height-normal);
+
     white-space: nowrap;
-    cursor: pointer;
-
-    &:hover {
-        color: var(--text-normal);
-        background-color: var(--background-modifier-hover);
-    }
-
-    & > .text-button-icon {
-        display: inline-flex;
-        align-items: center;
-    }
+    cursor: var(--cursor);
+    user-select: none;
 
     /* applied by metadataPanel.ts when the action is unavailable (empty
-       history / no template to reconform from) */
+       history / no template to reconform from). Mirrors the native
+       `.text-icon-button.is-disabled` state. */
     &.cascade-templates-disabled {
-        color: var(--text-faint);
-        opacity: 0.5;
-        cursor: default;
-        pointer-events: none;
+        cursor: not-allowed;
+        opacity: 0.7;
     }
 }
