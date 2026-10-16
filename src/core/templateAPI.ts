@@ -194,6 +194,28 @@ function stripFrontmatter(content: string): string {
  */
 export type ReconformMode = 'add-missing' | 'remove-extra' | 'reset-defaults';
 
+/**
+ * AI: Pure computation of the frontmatter a reconform phase would produce.
+ *
+ * Shared by `reconformFile` (which writes the result) and by the metadata panel
+ * (H4), which uses it to detect whether the current phase is a no-op without
+ * touching the file. Keeping the merge in one place guarantees they agree.
+ */
+export function computeReconformProps(
+	templateProps: Map<string, any>,
+	currentProps: Map<string, any>,
+	mode: ReconformMode
+): Map<string, any> {
+	switch (mode) {
+		case 'add-missing':
+			return mergeSecondOnFirstMap(templateProps, currentProps, true);
+		case 'remove-extra':
+			return mergeSecondOnFirstMap(templateProps, currentProps, false);
+		case 'reset-defaults':
+			return new Map(templateProps);
+	}
+}
+
 export async function reconformFile(file: TFile | undefined, mode: ReconformMode): Promise<boolean> {
 	if (!file) return false;
 
@@ -203,29 +225,18 @@ export async function reconformFile(file: TFile | undefined, mode: ReconformMode
 	const currentProps = await getFileProps(file);
 	const templateProps = await getFileProps(templateFile);
 
-	let nextProps: Map<string, any>;
-	switch (mode) {
-		case 'add-missing':
-			nextProps = mergeSecondOnFirstMap(templateProps, currentProps, true);
-			break;
-		case 'remove-extra':
-			nextProps = mergeSecondOnFirstMap(templateProps, currentProps, false);
-			break;
-		case 'reset-defaults':
-			nextProps = new Map(templateProps);
-			break;
-	}
+	const nextProps = computeReconformProps(templateProps, currentProps, mode);
 
 	// Nothing to write: skip the modify() to avoid needless cache churn/events.
 	if (areMapsEqual(currentProps, nextProps)) return false;
 
 	// AI: only pay the (possibly side-effecting) Templater step when the merge
 	// already changed something — see the helper below.
-	nextProps = await resolveTemplaterExpressions(file, nextProps);
+	const resolvedProps = await resolveTemplaterExpressions(file, nextProps);
 
-	if (areMapsEqual(currentProps, nextProps)) return false;
+	if (areMapsEqual(currentProps, resolvedProps)) return false;
 
-	await setFileProps(file, nextProps);
+	await setFileProps(file, resolvedProps);
 	return true;
 }
 
@@ -267,17 +278,18 @@ export async function applyTemplateToNewFile(file: TFile) {
 	await getCtx().app.vault.modify(file, templateContent);
 }
 
-export async function isTemplateCoherentToParentTemplate(
-	templateFile: TFile
-): Promise<{ isValid: boolean, neededProps: Set<string>, extraProps: Set<string> }> {
-
-	const parentTemplateFile = getTemplateOfFile(templateFile);
-	if (!parentTemplateFile) {
-		return { isValid: true, neededProps: new Set(), extraProps: new Set() };
-	}
-
-	const templateProps = await getFileProps(templateFile);
-	const parentProps = await getFileProps(parentTemplateFile);
+/**
+ * AI: Pure template-vs-parent conformance, shared by
+ * `isTemplateCoherentToParentTemplate` (disk reads) and the metadata panel
+ * (H4), which needs the raw maps anyway to classify a phase as no-op.
+ *
+ * A template is valid when it includes every property of its parent
+ * (neededProps empty); extraProps reports the properties it adds on its own.
+ */
+export function computeTemplateConformance(
+	templateProps: Map<string, any>,
+	parentProps: Map<string, any>
+): { isValid: boolean, neededProps: Set<string>, extraProps: Set<string> } {
 
 	const templatePropsSet = new Set(templateProps.keys());
 	const parentPropsSet = new Set(parentProps.keys());
@@ -292,4 +304,19 @@ export async function isTemplateCoherentToParentTemplate(
 		neededProps: difference(parentPropsSet, templatePropsSet),
 		extraProps: difference(templatePropsSet, parentPropsSet),
 	};
+}
+
+export async function isTemplateCoherentToParentTemplate(
+	templateFile: TFile
+): Promise<{ isValid: boolean, neededProps: Set<string>, extraProps: Set<string> }> {
+
+	const parentTemplateFile = getTemplateOfFile(templateFile);
+	if (!parentTemplateFile) {
+		return { isValid: true, neededProps: new Set(), extraProps: new Set() };
+	}
+
+	const templateProps = await getFileProps(templateFile);
+	const parentProps = await getFileProps(parentTemplateFile);
+
+	return computeTemplateConformance(templateProps, parentProps);
 }

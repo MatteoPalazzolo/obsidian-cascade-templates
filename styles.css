@@ -126,13 +126,26 @@
     cursor: var(--cursor);
     user-select: none;
 
-    /* applied by metadataPanel.ts when the action is unavailable (empty
-       history / no template to reconform from). Mirrors the native
-       `.text-icon-button.is-disabled` opacity, but deliberately uses the
-       default cursor: Obsidian's native `not-allowed` shows the aggressive
-       red forbidden cursor, which feels too loud for a passive toolbar. */
+    /* H5: only the reconform button has a variable label ("Reconform" /
+       "Remove extra" / "Reset"). Reserve the longest in `ch` so the control
+       never jumps when the phase changes. Not applied to Back. */
+    &.cascade-templates-reconform > .text-button-label {
+        min-width: 13ch;
+    }
+
+    /* H4 level 2 — a live action that would change nothing (no-op): attenuated,
+       still in the default grey palette, still interactive (a press advances
+       the cursor and pushes a step). */
+    &.cascade-templates-noop {
+        color: var(--text-faint);
+    }
+
+    /* H4 level 3 — classic disabled: no template to work from, or the cursor at
+       the end of the sequence. Fainter than the no-op level and non-interactive
+       (default cursor, not the aggressive native `not-allowed`). */
     &.cascade-templates-disabled {
+        color: var(--text-faint);
+        opacity: 0.5;
         cursor: default;
-        opacity: 0.7;
     }
 }

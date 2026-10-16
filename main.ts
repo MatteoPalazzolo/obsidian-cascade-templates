@@ -14,6 +14,7 @@ import {
 	initSettings,
 	onSettingsChange,
 } from 'src/settings';
+import { resolvableIcon } from 'src/utils/icons';
 
 
 export default class extends Plugin {
@@ -37,7 +38,7 @@ export default class extends Plugin {
 		const refreshPanels = debounce(() => MetadataPanel.refreshAll(), 200, true);
 		this.register(onSettingsChange(() => refreshPanels()));
 
-		this.addRibbonIcon('scan-eye', 'Template Scanner', () => new TemplateScannerModal(this.app).open());
+		this.addRibbonIcon(resolvableIcon('scan-eye', 'search'), 'Template Scanner', () => new TemplateScannerModal(this.app).open());
 
 		this.app.workspace.onLayoutReady(() => {
 			void registerTemplatezListener();

@@ -1,16 +1,18 @@
-import { MarkdownView, Plugin, TFile, Workspace, debounce, setIcon } from "obsidian";
+import { MarkdownView, Plugin, TFile, Workspace, debounce } from "obsidian";
 import {
+	computeReconformProps,
+	computeTemplateConformance,
 	getFileProps,
 	getFilePropsMapFromCache,
 	getTemplateOfFile,
-	isTemplateCoherentToParentTemplate,
 	reconformFile,
 	type ReconformMode,
 } from "../core/templateAPI";
-import { computeMapConformance, type MapConformanceStatus } from "../core/mapOperations";
-import { back, hasHistory, onHistoryChange, push } from "../core/reconformHistory";
+import { areMapsEqual, computeMapConformance, type MapConformanceStatus } from "../core/mapOperations";
+import { back, clear as clearHistory, hasHistory, onHistoryChange, push } from "../core/reconformHistory";
 import { hasTemplaterSyntax } from "../core/templaterBridge";
 import { getSettings, isTemplateFile } from "../settings";
+import { setIconSafe } from "../utils/icons";
 
 /**
  * AI: Metadata panel toolbar (Sessione C).
@@ -46,7 +48,7 @@ import { getSettings, isTemplateFile } from "../settings";
  * Conformance semantics:
  * - A NOTE is compared to its nearest ancestor `!Template.md`.
  * - A TEMPLATE is compared to its own nearest ancestor template (parent), via
- *   `isTemplateCoherentToParentTemplate`.
+ *   `computeTemplateConformance`.
  * - A file with no template to compare against gets a neutral indicator and a
  *   disabled reconform button.
  */
@@ -76,6 +78,18 @@ export interface PanelUI {
 	reconformMode: ReconformMode | null;
 	/** AI: Reconform context (template vs note); null = no template (disabled). */
 	reconformIsTemplate: boolean | null;
+	/**
+	 * AI: H4 — current/reference frontmatter, used to classify the bound phase as
+	 * a no-op (a live action that would change nothing). Null when unavailable.
+	 *
+	 * `reconformCurrent` doubles as the SESSION BASELINE: it is the frontmatter as
+	 * of the last refresh, so a content change that makes it diverge means the
+	 * note was edited outside the button and the cursor/Back stack must restart.
+	 */
+	reconformCurrent: Map<string, any> | null;
+	reconformReference: Map<string, any> | null;
+	/** AI: H3 — G4 Templater warning kept on the reconform tooltip, if any. */
+	reconformWarning: string | null;
 	/** AI: Back button (C4/H2): reverses the last reconform press. */
 	backEl: HTMLDivElement;
 	/** AI: Re-attaches the elements after a panel re-render. */
@@ -89,6 +103,10 @@ const STATUS_CLASS = "cascade-templates-status";
 const TOOLBAR_CLASS = "cascade-templates-toolbar";
 const ACTION_CLASS = "cascade-templates-action";
 const DISABLED_CLASS = "cascade-templates-disabled";
+/** AI: H4 — attenuated look for a live phase that would change nothing (no-op). */
+const NOOP_CLASS = "cascade-templates-noop";
+/** AI: H5 — fixed-width marker for the reconform button only. */
+const RECONFORM_CLASS = "cascade-templates-reconform";
 const METADATA_CONTAINER_SELECTOR = ".metadata-container";
 const ADD_BUTTON_SELECTOR = ".metadata-add-button";
 
@@ -121,8 +139,8 @@ const STATUS_NO_PARENT: StatusConfig = { icon: "circle-dashed", label: "No paren
  *   0 add-missing    → add the template props the file lacks
  *   1 remove-extra   → drop the props the template does not have
  *   2 reset-defaults → overwrite the values with the template defaults
- *   3 exhausted      → no further action: the button keeps the Clear look but
- *                      is rendered disabled until Back rewinds the cursor
+ *   3 exhausted      → no further action: the button keeps the Reset look but
+ *                      is hard-disabled until Back rewinds the cursor
  */
 type ReconformPhase = 0 | 1 | 2 | 3;
 
@@ -130,10 +148,11 @@ type ReconformPhase = 0 | 1 | 2 | 3;
  * AI: The three executable phases, in order. Label/icon/action are looked up by
  * phase index; the button no longer derives its phase from conformance (H1).
  */
+// FILL --> ALIGN --> CLEAR --> OFF
 const PHASE_CONFIG: PhaseConfig[] = [
-	{ mode: "add-missing", icon: "list-restart", label: "Add missing", action: "add the missing properties" },
-	{ mode: "remove-extra", icon: "list-x", label: "Remove extra", action: "remove the extra properties" },
-	{ mode: "reset-defaults", icon: "eraser", label: "Clear", action: "reset the properties to the defaults" },
+	{ mode: "add-missing", icon: "wrench", label: "Fill", action: "add the missing properties" },
+	{ mode: "remove-extra", icon: "anvil", label: "Align", action: "remove the extra properties" },
+	{ mode: "reset-defaults", icon: "mop", label: "Reset", action: "reset the properties to defaults" },
 ];
 
 /** AI: End of the sequence; the cursor clamps here and stays idle. */
@@ -266,7 +285,8 @@ function createPanel(view: MarkdownView): PanelUI {
 	const actionsEl = document.createElement("div");
 	actionsEl.classList.add(TOOLBAR_CLASS);
 
-	const reconform = createActionButton("list-restart", "Add missing");
+	const reconform = createActionButton("list-restart", "Reconform");
+	reconform.el.classList.add(RECONFORM_CLASS);
 	const backBtn = createActionButton("undo-2", "Back");
 	actionsEl.append(reconform.el, backBtn.el);
 
@@ -279,6 +299,9 @@ function createPanel(view: MarkdownView): PanelUI {
 		reconformLabelEl: reconform.labelEl,
 		reconformMode: null,
 		reconformIsTemplate: null,
+		reconformCurrent: null,
+		reconformReference: null,
+		reconformWarning: null,
 		phase: 0,
 		phaseFile: null,
 		backEl: backBtn.el,
@@ -310,7 +333,7 @@ function createActionButton(icon: string, label: string): {
 
 	const iconEl = document.createElement("span");
 	iconEl.classList.add("text-button-icon");
-	setIcon(iconEl, icon);
+	setIconSafe(iconEl, icon);
 
 	const labelEl = document.createElement("span");
 	labelEl.classList.add("text-button-label");
@@ -363,14 +386,24 @@ function observe(ui: PanelUI, container: HTMLElement): void {
 }
 
 /**
- * AI: Recomputes the whole toolbar of a view.
+ * AI: Recomputes the whole toolbar of a view (status + reconform cursor + Back).
+ *
+ * A note and a template share the same reference (the nearest ancestor
+ * `!Template.md`); only the status semantics differ:
+ * - note → `computeMapConformance` against that template;
+ * - template → `computeTemplateConformance` against its parent template.
  *
  * `fresh` forces a disk read instead of using the metadata cache. It is used
  * after an explicit action: `vault.modify` resolves before Obsidian refreshes
  * the metadata cache, so reading the cache right after a write would show the
  * OLD status and the button would not advance in place.
+ *
+ * `contentChanged` marks a refresh caused by a real file-content change (the
+ * `metadataCache` "changed" event). Only then do we compare the frontmatter with
+ * the session baseline: a divergence means the note was edited outside the
+ * button, so the reconform session (cursor + Back stack) restarts.
  */
-async function refreshPanel(ui: PanelUI, fresh = false): Promise<void> {
+async function refreshPanel(ui: PanelUI, fresh = false, contentChanged = false): Promise<void> {
 	// The cursor belongs to the file shown by the view: a different file resets
 	// it before anything is recomputed.
 	ensureCursor(ui);
@@ -383,43 +416,49 @@ async function refreshPanel(ui: PanelUI, fresh = false): Promise<void> {
 		return;
 	}
 
-	if (isTemplateFile(file)) {
-		await refreshTemplatePanel(ui, file);
-	} else {
-		await refreshNotePanel(ui, file, fresh);
-	}
-
-	updateBackState(ui);
-}
-
-/** AI: Status/actions of a regular note, compared to its template. */
-async function refreshNotePanel(ui: PanelUI, file: TFile, fresh: boolean): Promise<void> {
-	const template = getTemplateOfFile(file);
-	if (!template) {
-		setStatus(ui, STATUS_NEUTRAL);
-		setReconformUnavailable(ui, "No template applies to this note");
+	const isTemplate = isTemplateFile(file);
+	const reference = getTemplateOfFile(file);
+	if (!reference) {
+		setStatus(ui, isTemplate ? STATUS_NO_PARENT : STATUS_NEUTRAL);
+		setReconformUnavailable(ui, isTemplate
+			? "This template has no parent template"
+			: "No template applies to this note");
+		updateBackState(ui);
 		return;
 	}
 
 	const currentProps = fresh ? await getFileProps(file) : getFilePropsMapFromCache(file);
-	const templateProps = fresh ? await getFileProps(template) : getFilePropsMapFromCache(template);
+	const referenceProps = fresh ? await getFileProps(reference) : getFilePropsMapFromCache(reference);
 
 	// The view may have switched file while reading from disk: drop the result.
 	if (ui.view.file !== file) return;
 
-	const status = computeMapConformance(currentProps, templateProps);
-
-	setStatus(ui, NOTE_STATUS[status]);
-	// H1: the indicator above is derived from conformance; the button follows
-	// the cursor instead, so it does not depend on `status`.
-	setReconformAvailable(ui, false);
-
-	// AI: G4 guardrail. If the setting is off, the expressions would be pasted
-	// as literal text: say it in the tooltip instead of silently doing it.
-	const warning = templaterWarning(templateProps);
-	if (warning) {
-		ui.reconformEl.setAttribute("aria-label", `${ui.reconformEl.getAttribute("aria-label")} — ${warning}`);
+	// AI: a manual property edit ends the reconform session. Our own writes also
+	// emit "changed", but they run a `fresh` refresh first (below) which adopts
+	// the new props as the baseline, so this comparison only fires for a real
+	// external edit. `reconformCurrent` is that baseline (see PanelUI).
+	if (contentChanged && !fresh && ui.reconformCurrent !== null && !areMapsEqual(ui.reconformCurrent, currentProps)) {
+		clearHistory(ui.view);
 	}
+
+	if (isTemplate) {
+		const comparison = computeTemplateConformance(currentProps, referenceProps);
+		setStatus(ui, comparison.isValid ? TEMPLATE_STATUS.coherent : TEMPLATE_STATUS.divergent, reference.path);
+	} else {
+		const status = computeMapConformance(currentProps, referenceProps);
+		setStatus(ui, NOTE_STATUS[status], reference.path);
+	}
+
+	// AI: G4 guardrail. If the setting is off, the expressions would be pasted as
+	// literal text: keep the warning on the reconform tooltip.
+	ui.reconformWarning = isTemplate ? null : templaterWarning(referenceProps);
+
+	// H1: the status indicator above is derived from conformance; the button
+	// follows the cursor instead. H4 passes the maps along so each phase can be
+	// classified as active / no-op.
+	setReconformAvailable(ui, isTemplate, currentProps, referenceProps);
+
+	updateBackState(ui);
 }
 
 /**
@@ -435,69 +474,77 @@ function templaterWarning(templateProps: Map<string, any>): string | null {
 		: null;
 }
 
-/** AI: Status/actions of a template file, compared to its parent template. */
-async function refreshTemplatePanel(ui: PanelUI, file: TFile): Promise<void> {
-	const parentTemplate = getTemplateOfFile(file);
-	if (!parentTemplate) {
-		setStatus(ui, STATUS_NO_PARENT);
-		setReconformUnavailable(ui, "This template has no parent template");
-		return;
-	}
-
-	const comparison = await isTemplateCoherentToParentTemplate(file);
-
-	// The view may have switched file while reading from disk: drop the result.
-	if (ui.view.file !== file) return;
-
-	// H1: the indicator is derived from the parent comparison; the button below
-	// follows the cursor and is independent from `comparison.isValid`.
-	setStatus(ui, comparison.isValid ? TEMPLATE_STATUS.coherent : TEMPLATE_STATUS.divergent);
-	setReconformAvailable(ui, true);
-}
-
-/** AI: Applies a status indicator configuration. */
-function setStatus(ui: PanelUI, config: StatusConfig): void {
+/** AI: Applies a status indicator configuration, with the reference path (H3). */
+function setStatus(ui: PanelUI, config: StatusConfig, referencePath?: string): void {
 	ui.statusEl.empty();
-	setIcon(ui.statusEl, config.icon);
+	setIconSafe(ui.statusEl, config.icon);
 	ui.statusEl.classList.remove(...STATUS_MODS);
 	ui.statusEl.classList.add(`is-${config.mod}`);
-	ui.statusEl.setAttribute("aria-label", config.label);
+
+	// H3: the indicator tooltip carries the state AND the path of the template it
+	// was compared against (omitted for the neutral "no template" states).
+	const label = referencePath ? `${config.label} — ${referencePath}` : config.label;
+	ui.statusEl.setAttribute("aria-label", label);
 }
 
 /**
- * AI: Marks the reconform button as usable and renders its current cursor
- * phase. `isTemplate` only affects the tooltip wording (parent vs template).
+ * AI: Marks the reconform button as usable and renders its current cursor phase.
+ * `isTemplate` only affects the tooltip wording (parent vs template); the maps
+ * let the button classify each phase as a real action or a no-op (H4).
  */
-function setReconformAvailable(ui: PanelUI, isTemplate: boolean): void {
+function setReconformAvailable(
+	ui: PanelUI,
+	isTemplate: boolean,
+	currentProps: Map<string, any>,
+	referenceProps: Map<string, any>
+): void {
 	ui.reconformIsTemplate = isTemplate;
+	ui.reconformCurrent = currentProps;
+	ui.reconformReference = referenceProps;
 	renderReconform(ui);
 }
 
 /**
- * AI: H1 — paints the button from the current cursor position, independently of
- * conformance. No-op while no template is available (the disabled state set by
- * `setReconformUnavailable` must stay).
- *
- * End of sequence (phase exhausted): the button keeps the last phase's look
- * (Clear) but is rendered disabled, and stays so until Back rewinds the cursor.
+ * AI: H1/H4/H5 — paints the button from the cursor position, independently of
+ * conformance, using the three-level convention:
+ *   1. active   → no modifier: a live action that would change something;
+ *   2. no-op    → attenuated (NOOP_CLASS): live, but it would change nothing;
+ *   3. disabled → hard-disabled (DISABLED_CLASS): no template, or end of the
+ *                 sequence (the button keeps the Reset look until Back rewinds).
+ * No-op while no template is available (`setReconformUnavailable` decides that).
  */
 function renderReconform(ui: PanelUI): void {
 	if (ui.reconformIsTemplate === null) return;
 
 	const config = phaseConfig(ui.phase);
-	ui.reconformMode = phaseMode(ui.phase);
+	const mode = phaseMode(ui.phase);
+	ui.reconformMode = mode;
 
-	// `reconformMode === null` only happens at the end of the sequence, so it is
-	// exactly the "exhausted" condition: disabled look, no bound action.
-	const exhausted = ui.reconformMode === null;
+	// End of the sequence: `mode` is null, so it is exactly the "exhausted" case.
+	const exhausted = mode === null;
 	ui.reconformEl.classList.toggle(DISABLED_CLASS, exhausted);
 	ui.reconformEl.setAttribute("aria-disabled", String(exhausted));
 
+	// H4: a live phase that would leave the frontmatter untouched is attenuated.
+	ui.reconformEl.classList.toggle(NOOP_CLASS, isNoop(ui, mode));
+
 	ui.reconformIconEl.empty();
-	setIcon(ui.reconformIconEl, config.icon);
+	setIconSafe(ui.reconformIconEl, config.icon);
 	ui.reconformLabelEl.setText(config.label);
 
-	ui.reconformEl.setAttribute("aria-label", reconformTooltip(ui.reconformIsTemplate, config.action));
+	const base = reconformTooltip(ui.reconformIsTemplate, config.action);
+	ui.reconformEl.setAttribute("aria-label", ui.reconformWarning ? `${base} — ${ui.reconformWarning}` : base);
+}
+
+/**
+ * AI: H4 — `true` when the given phase would leave the frontmatter unchanged (a
+ * "no-op" press). Computed with the same merge `reconformFile` uses, so the
+ * attenuation matches what the press will actually do.
+ */
+function isNoop(ui: PanelUI, mode: ReconformMode | null): boolean {
+	if (mode === null || ui.reconformCurrent === null || ui.reconformReference === null) return false;
+	const result = computeReconformProps(ui.reconformReference, ui.reconformCurrent, mode);
+	return areMapsEqual(ui.reconformCurrent, result);
 }
 
 /** AI: Visual/action config of a phase; the last phase is shown while idle. */
@@ -521,6 +568,10 @@ function ensureCursor(ui: PanelUI): void {
 	if (path !== ui.phaseFile) {
 		ui.phase = 0;
 		ui.phaseFile = path;
+		// Drop the previous file's props so a stale no-op classification cannot
+		// flash before the next refresh recomputes them.
+		ui.reconformCurrent = null;
+		ui.reconformReference = null;
 	}
 }
 
@@ -530,10 +581,14 @@ function resetCursor(ui: PanelUI): void {
 	renderReconform(ui);
 }
 
-/** AI: Disables the reconform button when there is no template to work from. */
+/** AI: Hard-disables the reconform button when there is no template to work from. */
 function setReconformUnavailable(ui: PanelUI, reason: string): void {
 	ui.reconformMode = null;
 	ui.reconformIsTemplate = null;
+	ui.reconformCurrent = null;
+	ui.reconformReference = null;
+	ui.reconformWarning = null;
+	ui.reconformEl.classList.remove(NOOP_CLASS);
 	ui.reconformEl.classList.add(DISABLED_CLASS);
 	ui.reconformEl.setAttribute("aria-disabled", "true");
 	ui.reconformEl.setAttribute("aria-label", reason);
@@ -621,7 +676,7 @@ function refreshViewsForFile(file: TFile): void {
 		if (!isShown && !usesAsTemplate) continue;
 
 		const ui = panels.get(view);
-		if (ui) void refreshPanel(ui);
+		if (ui) void refreshPanel(ui, false, true);
 	}
 }
 

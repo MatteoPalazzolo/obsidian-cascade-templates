@@ -1,5 +1,6 @@
-import { Modal, Notice, setIcon, TFile } from "obsidian";
+import { Modal, Notice, TFile } from "obsidian";
 import { isTemplateFile } from "../settings";
+import { setIconSafe } from "../utils/icons";
 
 export enum AllertLevel {
     Suggestion,
@@ -80,7 +81,7 @@ export abstract class ScannerABC {
         detailsEl.style.setProperty("--side-color", secondaryColor);
 
         const summaryEl = detailsEl.createEl("summary");
-        setIcon(summaryEl, iconName);
+        setIconSafe(summaryEl, iconName);
         summaryEl.createSpan({ text: this.scannerName, cls: 'title' })
 
         const counter = this.positive.length < 10 ? '0'+this.positive.length : ''+this.positive.length;
@@ -88,7 +89,7 @@ export abstract class ScannerABC {
 
         if (this.autofix) {
             const fixBtnEl = summaryEl.createSpan({ cls: 'clickable-icon btn-fix' });
-            setIcon(fixBtnEl, "recycle");
+            setIconSafe(fixBtnEl, "recycle");
             fixBtnEl.onclick = e => {
                 e.preventDefault();
                 this.positive.forEach( f => this.fix(f) );
@@ -113,7 +114,7 @@ export abstract class ScannerABC {
 
                 if (this.autofix) {
                     const fixBtnEl = itemEl.createSpan({ cls: 'btn-fix clickable-icon' });
-                    setIcon(fixBtnEl, "recycle");
+                    setIconSafe(fixBtnEl, "recycle");
                     fixBtnEl.onclick = e => {
                         e.preventDefault();
                         this.fix(f);
