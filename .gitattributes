@@ -1,0 +1,3 @@
+# Normalizza tutti i file di testo a LF sia nel repo sia nel working tree.
+# Così l'editor/OS (es. mount Windows su WSL) non genera più diff whole-file.
+* text=auto eol=lf

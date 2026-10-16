@@ -24,8 +24,9 @@ import { getSettings, isTemplateFile } from "../settings";
  * The module owns three things:
  * 1. the per-view lifecycle (create / attach / observe / dispose);
  * 2. the status indicator shown LEFT of the native "Add property" button (C2);
- * 3. the action buttons shown RIGHT of it: the phase-advancing reconform
- *    button (C3) and the stack undo button (C4).
+ * 3. the action buttons shown RIGHT of it: the cursor-driven reconform button
+ *    (C3/H1: it advances one phase per click, starting from the base phase and
+ *    stopping on the last one) and the stack undo button (C4).
  *
  * DOM contract (verified live on Obsidian 1.x):
  *
@@ -59,12 +60,21 @@ export interface PanelUI {
 	statusEl: HTMLSpanElement;
 	/** AI: Action buttons container, inserted after the native add button. */
 	actionsEl: HTMLDivElement;
-	/** AI: Dynamic reconform button (C3). */
+	/** AI: Dynamic reconform button (C3), now driven by a per-view cursor (H1). */
 	reconformEl: HTMLDivElement;
 	reconformIconEl: HTMLElement;
 	reconformLabelEl: HTMLElement;
-	/** AI: Mode currently bound to the reconform button (null = disabled). */
+	/**
+	 * AI: H1 — cursor position of the reconform button (0..2 = pending phase,
+	 * 3 = sequence exhausted / idle). Disjoint from the conformance status.
+	 */
+	phase: ReconformPhase;
+	/** AI: H1 — path of the file the cursor belongs to (resets on file switch). */
+	phaseFile: string | null;
+	/** AI: Mode currently bound to the button (null = inert or unavailable). */
 	reconformMode: ReconformMode | null;
+	/** AI: Reconform context (template vs note); null = no template (disabled). */
+	reconformIsTemplate: boolean | null;
 	/** AI: Stack undo button (C4). */
 	undoEl: HTMLDivElement;
 	/** AI: Re-attaches the elements after a panel re-render. */
@@ -104,20 +114,28 @@ const STATUS_NEUTRAL: StatusConfig = { icon: "circle-dashed", label: "No templat
 const STATUS_NO_PARENT: StatusConfig = { icon: "circle-dashed", label: "No parent template", mod: "none" };
 
 /**
- * AI: The three phases of the dynamic reconform button.
- *
- * The phase is derived from the current conformance status, so after every
- * click the button recomputes itself and "advances" along the sequence
- * missing → extra → ok:
- *   1. add-missing    (status missing) → add the template props the file lacks
- *   2. remove-extra   (status extra)   → drop the props the template does not have
- *   3. reset-defaults (status ok)      → overwrite values with the template defaults
+ * AI: Cursor position of the dynamic reconform button (H1). It is a per-view UI
+ * state, deliberately DISJOINT from the conformance status: the sequence always
+ * starts at the base phase and advances one step per click.
+ *   0 add-missing    → add the template props the file lacks
+ *   1 remove-extra   → drop the props the template does not have
+ *   2 reset-defaults → overwrite the values with the template defaults
+ *   3 exhausted      → no further action; clicks are inert
  */
-const PHASE_CONFIG: Record<MapConformanceStatus, PhaseConfig> = {
-	missing: { mode: "add-missing", icon: "list-restart", label: "Add missing", action: "add the missing properties" },
-	extra: { mode: "remove-extra", icon: "list-x", label: "Remove extra", action: "remove the extra properties" },
-	ok: { mode: "reset-defaults", icon: "eraser", label: "Clear", action: "reset the properties to the defaults" },
-};
+type ReconformPhase = 0 | 1 | 2 | 3;
+
+/**
+ * AI: The three executable phases, in order. Label/icon/action are looked up by
+ * phase index; the button no longer derives its phase from conformance (H1).
+ */
+const PHASE_CONFIG: PhaseConfig[] = [
+	{ mode: "add-missing", icon: "list-restart", label: "Add missing", action: "add the missing properties" },
+	{ mode: "remove-extra", icon: "list-x", label: "Remove extra", action: "remove the extra properties" },
+	{ mode: "reset-defaults", icon: "eraser", label: "Clear", action: "reset the properties to the defaults" },
+];
+
+/** AI: End of the sequence; the cursor clamps here and stays idle. */
+const PHASE_DONE = PHASE_CONFIG.length as ReconformPhase;
 
 /** AI: Status indicator description. */
 interface StatusConfig {
@@ -169,10 +187,13 @@ export function init(plugin: Plugin): void {
 	const scheduleRefreshFor = debounce((changed: TFile) => refreshViewsForFile(changed), 200, true);
 	plugin.registerEvent(plugin.app.metadataCache.on("changed", (changed) => scheduleRefreshFor(changed)));
 
-	// Keep the undo buttons in sync with the history stacks (B3).
-	unsubscribeHistory = onHistoryChange((view) => {
+	// Keep the undo buttons in sync with the history stacks (B3) and, per H1,
+	// restart the cursor whenever the stack empties (undo / file switch / clear).
+	unsubscribeHistory = onHistoryChange((view, viewHasHistory) => {
 		const ui = panels.get(view);
-		if (ui) updateUndoState(ui);
+		if (!ui) return;
+		if (!viewHasHistory) resetCursor(ui);
+		updateUndoState(ui);
 	});
 }
 
@@ -255,6 +276,9 @@ function createPanel(view: MarkdownView): PanelUI {
 		reconformIconEl: reconform.iconEl,
 		reconformLabelEl: reconform.labelEl,
 		reconformMode: null,
+		reconformIsTemplate: null,
+		phase: 0,
+		phaseFile: null,
 		undoEl: undoBtn.el,
 		observer: null,
 		observedContainer: null,
@@ -345,6 +369,10 @@ function observe(ui: PanelUI, container: HTMLElement): void {
  * OLD status and the button would not advance in place.
  */
 async function refreshPanel(ui: PanelUI, fresh = false): Promise<void> {
+	// The cursor belongs to the file shown by the view: a different file resets
+	// it before anything is recomputed.
+	ensureCursor(ui);
+
 	const file = ui.view.file;
 	if (!file) {
 		setStatus(ui, STATUS_NEUTRAL);
@@ -380,7 +408,9 @@ async function refreshNotePanel(ui: PanelUI, file: TFile, fresh: boolean): Promi
 	const status = computeMapConformance(currentProps, templateProps);
 
 	setStatus(ui, NOTE_STATUS[status]);
-	setReconform(ui, status, false);
+	// H1: the indicator above is derived from conformance; the button follows
+	// the cursor instead, so it does not depend on `status`.
+	setReconformAvailable(ui, false);
 
 	// AI: G4 guardrail. If the setting is off, the expressions would be pasted
 	// as literal text: say it in the tooltip instead of silently doing it.
@@ -417,14 +447,10 @@ async function refreshTemplatePanel(ui: PanelUI, file: TFile): Promise<void> {
 	// The view may have switched file while reading from disk: drop the result.
 	if (ui.view.file !== file) return;
 
-	// "needed" wins over "extra": the important direction is that a template
-	// includes every property of its parent.
-	const status: MapConformanceStatus = comparison.neededProps.size > 0
-		? "missing"
-		: comparison.extraProps.size > 0 ? "extra" : "ok";
-
+	// H1: the indicator is derived from the parent comparison; the button below
+	// follows the cursor and is independent from `comparison.isValid`.
 	setStatus(ui, comparison.isValid ? TEMPLATE_STATUS.coherent : TEMPLATE_STATUS.divergent);
-	setReconform(ui, status, true);
+	setReconformAvailable(ui, true);
 }
 
 /** AI: Applies a status indicator configuration. */
@@ -436,11 +462,26 @@ function setStatus(ui: PanelUI, config: StatusConfig): void {
 	ui.statusEl.setAttribute("aria-label", config.label);
 }
 
-/** AI: Binds a reconform phase to the button and enables it. */
-function setReconform(ui: PanelUI, status: MapConformanceStatus, isTemplate: boolean): void {
-	const config = PHASE_CONFIG[status];
+/**
+ * AI: Marks the reconform button as usable and renders its current cursor
+ * phase. `isTemplate` only affects the tooltip wording (parent vs template).
+ */
+function setReconformAvailable(ui: PanelUI, isTemplate: boolean): void {
+	ui.reconformIsTemplate = isTemplate;
+	renderReconform(ui);
+}
 
-	ui.reconformMode = config.mode;
+/**
+ * AI: H1 — paints the button from the current cursor position, independently of
+ * conformance. No-op while no template is available (the disabled state set by
+ * `setReconformUnavailable` must stay).
+ */
+function renderReconform(ui: PanelUI): void {
+	if (ui.reconformIsTemplate === null) return;
+
+	const config = phaseConfig(ui.phase);
+	ui.reconformMode = phaseMode(ui.phase);
+
 	ui.reconformEl.classList.remove(DISABLED_CLASS);
 	ui.reconformEl.removeAttribute("aria-disabled");
 
@@ -448,12 +489,43 @@ function setReconform(ui: PanelUI, status: MapConformanceStatus, isTemplate: boo
 	setIcon(ui.reconformIconEl, config.icon);
 	ui.reconformLabelEl.setText(config.label);
 
-	ui.reconformEl.setAttribute("aria-label", reconformTooltip(isTemplate, config.action));
+	ui.reconformEl.setAttribute("aria-label", reconformTooltip(ui.reconformIsTemplate, config.action));
+}
+
+/** AI: Visual/action config of a phase; the last phase is shown while idle. */
+function phaseConfig(phase: ReconformPhase): PhaseConfig {
+	return PHASE_CONFIG[Math.min(phase, PHASE_CONFIG.length - 1)];
+}
+
+/** AI: Mode bound to a phase, or null once the cursor is exhausted (inert). */
+function phaseMode(phase: ReconformPhase): ReconformMode | null {
+	return phase < PHASE_DONE ? PHASE_CONFIG[phase].mode : null;
+}
+
+/**
+ * AI: H1 — the cursor is a per-view UI state, but a NEW file replacing the
+ * current one in the same view must restart it (same B2 trigger as the undo
+ * stack). The path is the anchor: Obsidian may hand back a different TFile
+ * instance for the same file.
+ */
+function ensureCursor(ui: PanelUI): void {
+	const path = ui.view.file?.path ?? null;
+	if (path !== ui.phaseFile) {
+		ui.phase = 0;
+		ui.phaseFile = path;
+	}
+}
+
+/** AI: H1 — restarts the sequence from the base phase and repaints the button. */
+function resetCursor(ui: PanelUI): void {
+	ui.phase = 0;
+	renderReconform(ui);
 }
 
 /** AI: Disables the reconform button when there is no template to work from. */
 function setReconformUnavailable(ui: PanelUI, reason: string): void {
 	ui.reconformMode = null;
+	ui.reconformIsTemplate = null;
 	ui.reconformEl.classList.add(DISABLED_CLASS);
 	ui.reconformEl.setAttribute("aria-disabled", "true");
 	ui.reconformEl.setAttribute("aria-label", reason);
@@ -484,13 +556,22 @@ function updateUndoState(ui: PanelUI): void {
 async function handleReconformClick(event: MouseEvent, ui: PanelUI): Promise<void> {
 	event.preventDefault();
 
+	// Keep the cursor coherent with the file before reading its bound mode.
+	ensureCursor(ui);
+
 	const mode = ui.reconformMode;
 	const file = ui.view.file;
+	// Inert: no template available, or the sequence already reached the end.
 	if (!mode || !file) return;
 
 	const snapshot = await getFileProps(file);
 	const changed = await reconformFile(file, mode);
 	if (changed) push(ui.view, snapshot);
+
+	// H1: advance one phase per live click, even when the action was a no-op,
+	// then clamp at the end so the sequence always starts at the base and stops
+	// on the last phase.
+	ui.phase = Math.min(ui.phase + 1, PHASE_DONE) as ReconformPhase;
 
 	// Fresh: the metadata cache is not yet updated right after the write.
 	await refreshPanel(ui, true);

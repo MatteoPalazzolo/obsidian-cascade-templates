@@ -1,6 +1,3 @@
-[x] conforma + ADD MISSING con la spaziatura corretta custom (togli margine sinistro prima del +)
-    → DROPPATO (punto A escluso dalla Sessione H, non più rilevante)
-
 [x] struttura meglio pulsante a stati:
 - vorrei che si ciclasse sempre sui 3 stati in modo da abituare e non confondere l'utente, idealmente il pulsante dovrebbe avere una larghezza pari alla dimensione del testo più grande che deve contenere usando ch da css (solo sullo specifico pulsante di reconform, non su UNDO)
     → H1 (parte sempre dal base, avanzamento a fasi) + H5 (min-width in `ch` sul solo reconform).
