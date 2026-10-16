@@ -130,7 +130,7 @@
        "Remove extra" / "Reset"). Reserve the longest in `ch` so the control
        never jumps when the phase changes. Not applied to Back. */
     &.cascade-templates-reconform > .text-button-label {
-        min-width: 13ch;
+        min-width: 5ch;
     }
 
     /* H4 level 2 — a live action that would change nothing (no-op): attenuated,

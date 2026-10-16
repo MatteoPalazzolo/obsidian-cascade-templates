@@ -152,7 +152,7 @@ type ReconformPhase = 0 | 1 | 2 | 3;
 const PHASE_CONFIG: PhaseConfig[] = [
 	{ mode: "add-missing", icon: "wrench", label: "Fill", action: "add the missing properties" },
 	{ mode: "remove-extra", icon: "anvil", label: "Align", action: "remove the extra properties" },
-	{ mode: "reset-defaults", icon: "mop", label: "Reset", action: "reset the properties to defaults" },
+	{ mode: "reset-defaults", icon: "brush-cleaning", label: "Reset", action: "reset the properties to defaults" },
 ];
 
 /** AI: End of the sequence; the cursor clamps here and stays idle. */
