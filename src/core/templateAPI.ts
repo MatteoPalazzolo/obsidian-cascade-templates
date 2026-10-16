@@ -190,7 +190,7 @@ function stripFrontmatter(content: string): string {
  *   - `reset-defaults` → Clear:   exactly the template defaults (overwrites values).
  *
  * Returns `true` only when the file actually changed, so the caller can decide
- * whether to refresh the panel (and whether to push an undo snapshot).
+ * whether to refresh the panel (and whether to push a Back snapshot).
  */
 export type ReconformMode = 'add-missing' | 'remove-extra' | 'reset-defaults';
 

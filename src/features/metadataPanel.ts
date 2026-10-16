@@ -8,7 +8,7 @@ import {
 	type ReconformMode,
 } from "../core/templateAPI";
 import { computeMapConformance, type MapConformanceStatus } from "../core/mapOperations";
-import { hasHistory, onHistoryChange, push, undo } from "../core/reconformHistory";
+import { back, hasHistory, onHistoryChange, push } from "../core/reconformHistory";
 import { hasTemplaterSyntax } from "../core/templaterBridge";
 import { getSettings, isTemplateFile } from "../settings";
 
@@ -26,7 +26,8 @@ import { getSettings, isTemplateFile } from "../settings";
  * 2. the status indicator shown LEFT of the native "Add property" button (C2);
  * 3. the action buttons shown RIGHT of it: the cursor-driven reconform button
  *    (C3/H1: it advances one phase per click, starting from the base phase and
- *    stopping on the last one) and the stack undo button (C4).
+ *    stopping on the last one) and the Back button (C4/H2: it reverses the last
+ *    press and rewinds the cursor by one phase).
  *
  * DOM contract (verified live on Obsidian 1.x):
  *
@@ -38,9 +39,9 @@ import { getSettings, isTemplateFile } from "../settings";
  *       .metadata-add-button                          <- NATIVE "Add property"
  *       <div class="cascade-templates-toolbar">       <- C3/C4, after it
  *         <div class="cascade-templates-action"> reconform </div>
- *         <div class="cascade-templates-action"> undo </div>
+ *         <div class="cascade-templates-action"> back </div>
  *
- * Row layout: [status] [Add property] [reconform] [undo].
+ * Row layout: [status] [Add property] [reconform] [back].
  *
  * Conformance semantics:
  * - A NOTE is compared to its nearest ancestor `!Template.md`.
@@ -75,8 +76,8 @@ export interface PanelUI {
 	reconformMode: ReconformMode | null;
 	/** AI: Reconform context (template vs note); null = no template (disabled). */
 	reconformIsTemplate: boolean | null;
-	/** AI: Stack undo button (C4). */
-	undoEl: HTMLDivElement;
+	/** AI: Back button (C4/H2): reverses the last reconform press. */
+	backEl: HTMLDivElement;
 	/** AI: Re-attaches the elements after a panel re-render. */
 	observer: MutationObserver | null;
 	/** AI: The container currently observed (to detect container replacement). */
@@ -120,7 +121,8 @@ const STATUS_NO_PARENT: StatusConfig = { icon: "circle-dashed", label: "No paren
  *   0 add-missing    → add the template props the file lacks
  *   1 remove-extra   → drop the props the template does not have
  *   2 reset-defaults → overwrite the values with the template defaults
- *   3 exhausted      → no further action; clicks are inert
+ *   3 exhausted      → no further action: the button keeps the Clear look but
+ *                      is rendered disabled until Back rewinds the cursor
  */
 type ReconformPhase = 0 | 1 | 2 | 3;
 
@@ -187,13 +189,13 @@ export function init(plugin: Plugin): void {
 	const scheduleRefreshFor = debounce((changed: TFile) => refreshViewsForFile(changed), 200, true);
 	plugin.registerEvent(plugin.app.metadataCache.on("changed", (changed) => scheduleRefreshFor(changed)));
 
-	// Keep the undo buttons in sync with the history stacks (B3) and, per H1,
-	// restart the cursor whenever the stack empties (undo / file switch / clear).
+	// Keep the Back buttons in sync with the history stacks (B3) and, per H1,
+	// restart the cursor whenever the stack empties (back / file switch / clear).
 	unsubscribeHistory = onHistoryChange((view, viewHasHistory) => {
 		const ui = panels.get(view);
 		if (!ui) return;
 		if (!viewHasHistory) resetCursor(ui);
-		updateUndoState(ui);
+		updateBackState(ui);
 	});
 }
 
@@ -265,8 +267,8 @@ function createPanel(view: MarkdownView): PanelUI {
 	actionsEl.classList.add(TOOLBAR_CLASS);
 
 	const reconform = createActionButton("list-restart", "Add missing");
-	const undoBtn = createActionButton("undo-2", "Undo");
-	actionsEl.append(reconform.el, undoBtn.el);
+	const backBtn = createActionButton("undo-2", "Back");
+	actionsEl.append(reconform.el, backBtn.el);
 
 	const ui: PanelUI = {
 		view,
@@ -279,13 +281,13 @@ function createPanel(view: MarkdownView): PanelUI {
 		reconformIsTemplate: null,
 		phase: 0,
 		phaseFile: null,
-		undoEl: undoBtn.el,
+		backEl: backBtn.el,
 		observer: null,
 		observedContainer: null,
 	};
 
 	reconform.el.addEventListener("click", (event) => void handleReconformClick(event, ui));
-	undoBtn.el.addEventListener("click", (event) => void handleUndoClick(event, ui));
+	backBtn.el.addEventListener("click", (event) => void handleBackClick(event, ui));
 
 	panels.set(view, ui);
 	return ui;
@@ -377,7 +379,7 @@ async function refreshPanel(ui: PanelUI, fresh = false): Promise<void> {
 	if (!file) {
 		setStatus(ui, STATUS_NEUTRAL);
 		setReconformUnavailable(ui, "No file is open in this view");
-		updateUndoState(ui);
+		updateBackState(ui);
 		return;
 	}
 
@@ -387,7 +389,7 @@ async function refreshPanel(ui: PanelUI, fresh = false): Promise<void> {
 		await refreshNotePanel(ui, file, fresh);
 	}
 
-	updateUndoState(ui);
+	updateBackState(ui);
 }
 
 /** AI: Status/actions of a regular note, compared to its template. */
@@ -475,6 +477,9 @@ function setReconformAvailable(ui: PanelUI, isTemplate: boolean): void {
  * AI: H1 — paints the button from the current cursor position, independently of
  * conformance. No-op while no template is available (the disabled state set by
  * `setReconformUnavailable` must stay).
+ *
+ * End of sequence (phase exhausted): the button keeps the last phase's look
+ * (Clear) but is rendered disabled, and stays so until Back rewinds the cursor.
  */
 function renderReconform(ui: PanelUI): void {
 	if (ui.reconformIsTemplate === null) return;
@@ -482,8 +487,11 @@ function renderReconform(ui: PanelUI): void {
 	const config = phaseConfig(ui.phase);
 	ui.reconformMode = phaseMode(ui.phase);
 
-	ui.reconformEl.classList.remove(DISABLED_CLASS);
-	ui.reconformEl.removeAttribute("aria-disabled");
+	// `reconformMode === null` only happens at the end of the sequence, so it is
+	// exactly the "exhausted" condition: disabled look, no bound action.
+	const exhausted = ui.reconformMode === null;
+	ui.reconformEl.classList.toggle(DISABLED_CLASS, exhausted);
+	ui.reconformEl.setAttribute("aria-disabled", String(exhausted));
 
 	ui.reconformIconEl.empty();
 	setIcon(ui.reconformIconEl, config.icon);
@@ -504,7 +512,7 @@ function phaseMode(phase: ReconformPhase): ReconformMode | null {
 
 /**
  * AI: H1 — the cursor is a per-view UI state, but a NEW file replacing the
- * current one in the same view must restart it (same B2 trigger as the undo
+ * current one in the same view must restart it (same B2 trigger as the Back
  * stack). The path is the anchor: Obsidian may hand back a different TFile
  * instance for the same file.
  */
@@ -541,17 +549,19 @@ function reconformTooltip(isTemplate: boolean, action: string): string {
 		: `Reconform from template: ${action}`;
 }
 
-/** AI: Enables/disables the undo button based on the view's history stack. */
-function updateUndoState(ui: PanelUI): void {
+/** AI: Enables/disables the Back button based on the view's history stack. */
+function updateBackState(ui: PanelUI): void {
 	const enabled = hasHistory(ui.view);
-	ui.undoEl.classList.toggle(DISABLED_CLASS, !enabled);
-	ui.undoEl.setAttribute("aria-disabled", String(!enabled));
+	ui.backEl.classList.toggle(DISABLED_CLASS, !enabled);
+	ui.backEl.setAttribute("aria-disabled", String(!enabled));
 }
 
 /**
- * AI: Runs the phase currently bound to the reconform button.
- * Snapshot semantics (B1): the frontmatter is captured BEFORE the change and
- * pushed onto the history stack only when the file actually changed.
+ * AI: Runs the phase currently bound to the reconform button (H1).
+ *
+ * H2 snapshot semantics: the frontmatter AND the cursor phase are captured
+ * BEFORE the press and pushed UNCONDITIONALLY, so Back always has one step to
+ * reverse even when the action changed nothing on disk.
  */
 async function handleReconformClick(event: MouseEvent, ui: PanelUI): Promise<void> {
 	event.preventDefault();
@@ -564,9 +574,16 @@ async function handleReconformClick(event: MouseEvent, ui: PanelUI): Promise<voi
 	// Inert: no template available, or the sequence already reached the end.
 	if (!mode || !file) return;
 
-	const snapshot = await getFileProps(file);
-	const changed = await reconformFile(file, mode);
-	if (changed) push(ui.view, snapshot);
+	const propsBefore = await getFileProps(file);
+	const phaseBefore = ui.phase;
+
+	await reconformFile(file, mode);
+
+	// The view may have switched file while reading/writing: don't stack a step
+	// that belongs to a different note.
+	if (ui.view.file?.path !== file.path) return;
+
+	push(ui.view, propsBefore, phaseBefore);
 
 	// H1: advance one phase per live click, even when the action was a no-op,
 	// then clamp at the end so the sequence always starts at the base and stops
@@ -577,13 +594,19 @@ async function handleReconformClick(event: MouseEvent, ui: PanelUI): Promise<voi
 	await refreshPanel(ui, true);
 }
 
-/** AI: Restores the previous snapshot and recomputes the toolbar. */
-async function handleUndoClick(event: MouseEvent, ui: PanelUI): Promise<void> {
+/**
+ * AI: Rewinds the last reconform press (H2): restores the frontmatter captured
+ * before it and moves the cursor back to its previous phase.
+ */
+async function handleBackClick(event: MouseEvent, ui: PanelUI): Promise<void> {
 	event.preventDefault();
 
-	if (!hasHistory(ui.view)) return;
+	const restored = await back(ui.view);
+	if (!restored) return;
 
-	await undo(ui.view);
+	// Back rewinds the cursor to the phase it had before the reversed press.
+	ui.phase = restored.phase as ReconformPhase;
+
 	await refreshPanel(ui, true);
 }
 

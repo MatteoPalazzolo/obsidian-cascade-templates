@@ -65,7 +65,7 @@
 }
 
 /* AI: per-view metadata panel toolbar (Sessione C).
-   Layout: [status] [Add property] [reconform] [undo] inside .metadata-content.
+   Layout: [status] [Add property] [reconform] [back] inside .metadata-content.
    Only native Obsidian variables are used so light/dark/custom themes work. */
 .cascade-templates-status {
     display: inline-flex;
