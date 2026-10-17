@@ -25,7 +25,7 @@ While a note is open, the metadata panel shows an icon describing its relation t
 A single button in the metadata panel walks through three steps: Fill (add missing properties), Align (drop extra properties) and Reset (restore the template defaults). Back undoes the last step and rewinds the button. The toolbar can be hidden on notes that have no template.
 
 ### Template scanner
-A scanner that walks the vault and lists every note whose frontmatter is not coherent with its associated template.
+A scanner that walks the vault and lists notes whose frontmatter is not coherent with their template, plus templates missing properties from their parent template. Folders can be excluded and the scan can be limited to notes, templates or both.
 
 ## How it works
 

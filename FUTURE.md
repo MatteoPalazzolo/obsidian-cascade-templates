@@ -103,14 +103,11 @@ Per **ogni** view markdown visibile (split pane), riga del pannello Properties:
 
 ## Rischi tecnici trasversali (aperti)
 
-3. **Performance scanner** — `runAllScanner` fa `vault.read()` per ogni file ma `CoherenceScanner`
-   ignora `content` e usa la cache. Rimuovere il read; tutto su `metadataCache`. (Sessione E1).
-4. **Settings incomplete** — per la community serve completare la Settings tab: esiste già la
-   versione minima (nome template + toggle Templater); restano le voci di D1.
 6. **Bug visibilità pannello** — superato dall'istanza per-view della Sessione C; resta da
    verificare live su casi limite (focus su search/explorer, split multipli).
 
-> Chiusi: 1 (Set TC39, A1), 2 (`setFileProps`, A3), 5 (`console.log`, A5).
+> Chiusi: 1 (Set TC39, A1), 2 (`setFileProps`, A3), 3 (scanner cache-only, E1), 4 (settings D1),
+> 5 (`console.log`, A5).
 
 ---
 
@@ -193,7 +190,16 @@ Per **ogni** view markdown visibile (split pane), riga del pannello Properties:
   solo sulle note.
 - **D1b** `panelVisibility` (`always` / `onlyWithTemplate`) con toolbar nascosta via CSS quando non
   c'è un template.
-- Restano per D1 le impostazioni dello scanner (vedi E4).
+- **D1c** Impostazioni scanner: `scannerExcludeFolders` (una cartella per riga, prefisso) e
+  `scannerTargets` (note/template).
+
+### Sessione E — Scanner (parziale)
+
+- **E1** scansione senza `vault.read`: tutto su `metadataCache` (chiude il Rischio 3).
+- **E3** `TemplateCoherenceScanner`: template vs parent, segnala le proprietà mancanti.
+- **E4** scope dalle settings, esclusioni e stringhe inglesi; modal con conteggio file e stato
+  vuoto "No issues found".
+- Restano E2 (autofix) e la rifinitura UX del modal.
 
 ---
 
@@ -221,8 +227,8 @@ Origine: `NEXT.md`. Atomicità e non invasività invariate.
 
 ### Sessione D — Settings + fondamenta
 
-- [ ] **D1** Restano le impostazioni dello scanner (`scannerExcludeFolders`, `scannerTargets`), da
-      fare insieme a E1/E4. Auto-apply e visibilità toolbar sono chiuse in D1a/D1b (vedi log).
+- [x] **D1** Settings complete: template filename, Templater toggle, auto-apply, visibilità toolbar,
+      scope ed esclusioni dello scanner. Auto-apply/visibilità in D1a/D1b; scanner in E4.
 - [x] **D1a** Auto-apply: `autoApply` con `off` / `properties` (default) / `full`. Trigger
       `create` + `layoutReady` + 300 ms + body vuoto, ricontrollato atomicamente in `vault.process`.
       Niente nome `Untitled`, niente `file-open`; i template annidati ereditano dal parent (props e,
@@ -237,11 +243,14 @@ Origine: `NEXT.md`. Atomicità e non invasività invariate.
 
 ### Sessione E — Scanner (resta Modal)
 
-- [ ] **E1** Performance: operare su `metadataCache`, eliminare `vault.read` per file (chiude il Rischio 3).
+- [x] **E1** Performance: operare su `metadataCache`, eliminare `vault.read` per file (chiude il
+      Rischio 3).
 - [ ] **E2** Autofix per item + "fix all" riusando `reconformFile` (e spingendo in history come la UI).
-- [ ] **E3** Secondo scanner: **template vs parent** (stessa regola delle icone); etichette esplicite
-      extra/missing per file.
-- [ ] **E4** Scope/esclusioni dalle settings + stringhe in inglese.
+- [x] **E3** Secondo scanner: **template vs parent** (stessa regola delle icone).
+      *Base: segnala solo le prop mancanti; le etichette extra/missing per file restano da fare
+      insieme alla UX.*
+- [x] **E4** Scope/esclusioni dalle settings + stringhe in inglese.
+      *`scannerExcludeFolders` (prefisso di cartella) e `scannerTargets` (note/template).*
 
 ### Sessione F — Community readiness
 

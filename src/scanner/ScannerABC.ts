@@ -1,5 +1,4 @@
 import { Modal, Notice, TFile } from "obsidian";
-import { isTemplateFile } from "../settings";
 import { setIconSafe } from "../utils/icons";
 
 export enum AllertLevel {
@@ -53,9 +52,8 @@ export abstract class ScannerABC {
         this.modal = modal;
     }
 
-    scan(file: TFile, content: string): boolean {
-        if (this._scan(file, content)) {
-            //TODO: ignora i !Template.md
+    scan(file: TFile): boolean {
+        if (this._scan(file)) {
             this.positive.push(file);
             return true;
         }
@@ -63,8 +61,8 @@ export abstract class ScannerABC {
     }
 
     fix(target: TFile): boolean {
-        new Notice("ERROR: autofix not avaliable!");
-        throw new Error("ERROR: autofix not avaliable!");
+        new Notice("Autofix is not available yet.");
+        throw new Error("Autofix is not available yet.");
     }
 
     render(parent: HTMLElement) {
@@ -84,8 +82,8 @@ export abstract class ScannerABC {
         setIconSafe(summaryEl, iconName);
         summaryEl.createSpan({ text: this.scannerName, cls: 'title' })
 
-        const counter = this.positive.length < 10 ? '0'+this.positive.length : ''+this.positive.length;
-        summaryEl.createSpan({ text: counter, cls: 'clickable-icon' });
+        // AI: two-digit counter, e.g. 03 / 12. Kept for both scanners.
+        summaryEl.createSpan({ text: this.positive.length.toString().padStart(2, '0'), cls: 'clickable-icon' });
 
         if (this.autofix) {
             const fixBtnEl = summaryEl.createSpan({ cls: 'clickable-icon btn-fix' });
@@ -98,17 +96,17 @@ export abstract class ScannerABC {
         }
         
         this.positive.
-            filter( f => !isTemplateFile(f) ).
             // sort by name in ascending order 
             // https://stackoverflow.com/questions/43311121/sort-an-array-of-objects-in-typescript
-            sort((a, b) => (a.name < b.name ? -1 : 1)).
+            sort((a, b) => (a.basename < b.basename ? -1 : 1)).
             forEach( f => {
                 const itemEl = detailsEl.createDiv({ cls: 'item-container' });
-                const fileNameEl = itemEl.createEl("a", { text: f.name.slice(0,-3), cls: 'internal-link name' });
+                const fileNameEl = itemEl.createEl("a", { text: f.basename, cls: 'internal-link name' });
+                fileNameEl.title = f.path;
 
                 fileNameEl.onclick = e => {
                     e.preventDefault();
-                    this.modal.app.workspace.openLinkText(f.name, f.path, false);
+                    void this.modal.app.workspace.getLeaf(false).openFile(f);
                     this.modal.close();
                 }
 
@@ -126,6 +124,6 @@ export abstract class ScannerABC {
 
     }
 
-    abstract _scan(file: TFile, content: string): boolean;
+    abstract _scan(file: TFile): boolean;
 
 }

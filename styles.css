@@ -1,5 +1,17 @@
 .ScannerModal {
 
+    /* AI: E4 — minimal scanner summary / empty state, native typography. */
+    & > p.scanner-summary {
+        color: var(--text-muted);
+        font-size: var(--font-ui-small);
+        margin: var(--size-4-1) 0 var(--size-4-3);
+    }
+
+    & > p.scanner-empty {
+        color: var(--text-muted);
+        margin: var(--size-4-4) 0;
+    }
+
     & details {
         background-color: var(--main-color);
         margin-bottom: 2px;

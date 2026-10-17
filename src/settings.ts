@@ -39,6 +39,17 @@ export type AutoApplyMode = "off" | "properties" | "full";
  */
 export type PanelVisibility = "always" | "onlyWithTemplate";
 
+/**
+ * AI: Which file kinds the vault scanner visits (Session E).
+ *
+ * - `notes`     → regular notes compared to their nearest template.
+ * - `templates` → `!Template.md` files compared to their parent template.
+ */
+export interface ScannerTargets {
+	notes: boolean;
+	templates: boolean;
+}
+
 /** AI: User-configurable behaviour of the plugin. */
 export interface CascadeTemplatesSettings {
 	/**
@@ -60,6 +71,16 @@ export interface CascadeTemplatesSettings {
 
 	/** AI: Visibility of the injected toolbar when no template applies (D1). */
 	panelVisibility: PanelVisibility;
+
+	/**
+	 * AI: Folders skipped by the vault scanner (E4). Stored as normalized vault
+	 * paths (no leading/trailing slash); a file is skipped when its path is the
+	 * folder itself or starts with `folder + "/"`.
+	 */
+	scannerExcludeFolders: string[];
+
+	/** AI: File kinds visited by the vault scanner (E4). */
+	scannerTargets: ScannerTargets;
 }
 
 /** AI: Fallbacks applied on top of whatever `data.json` contains. */
@@ -68,6 +89,8 @@ export const DEFAULT_SETTINGS: CascadeTemplatesSettings = {
 	evaluateTemplaterInNotes: false,
 	autoApply: "properties",
 	panelVisibility: "always",
+	scannerExcludeFolders: [],
+	scannerTargets: { notes: true, templates: true },
 };
 
 /** AI: Plugin handle, needed to load/save `data.json`. */
@@ -104,7 +127,52 @@ function normalizeSettings(stored: Partial<CascadeTemplatesSettings> | null): Ca
 		merged.panelVisibility = DEFAULT_SETTINGS.panelVisibility;
 	}
 
+	merged.scannerExcludeFolders = normalizeFolders(merged.scannerExcludeFolders);
+
+	const targets = merged.scannerTargets;
+	merged.scannerTargets = {
+		notes: targets?.notes !== false,
+		templates: targets?.templates !== false,
+	};
+
 	return merged;
+}
+
+/**
+ * AI: Normalizes a folder list: trims entries, converts backslashes, strips
+ * leading/trailing slashes and drops empty/duplicate values. Used both when
+ * loading `data.json` and when reading the settings textarea (E4).
+ */
+export function normalizeFolders(folders: unknown): string[] {
+	if (!Array.isArray(folders)) return [];
+
+	const normalized = new Set<string>();
+	for (const entry of folders) {
+		if (typeof entry !== "string") continue;
+		const path = entry.trim().replace(/\\/g, "/").replace(/^\/+|\/+$/g, "");
+		if (path) normalized.add(path);
+	}
+	return [...normalized];
+}
+
+/**
+ * AI: Parses the scanner exclusion textarea (one folder per line).
+ * Exposed so the settings tab and `normalizeFolders` share the same rules.
+ */
+export function parseFolderList(value: string): string[] {
+	return normalizeFolders(value.split(/\r?\n/));
+}
+
+/**
+ * AI: True when the scanner must skip `path` because it lives in one of the
+ * excluded folders (E4). Case-insensitive so Windows/mobile behave the same.
+ */
+export function isScannerExcluded(path: string): boolean {
+	const normalized = path.toLowerCase();
+	return settings.scannerExcludeFolders.some(folder => {
+		const prefix = folder.toLowerCase();
+		return normalized === prefix || normalized.startsWith(prefix + "/");
+	});
 }
 
 /** AI: Read-only view of the current settings. */
@@ -227,6 +295,42 @@ export class CascadeTemplatesSettingTab extends PluginSettingTab {
 				.setValue(getSettings().panelVisibility)
 				.onChange(async value => {
 					await updateSettings({ panelVisibility: value as PanelVisibility });
+				}));
+
+		new Setting(containerEl).setName("Scanner").setHeading();
+
+		new Setting(containerEl)
+			.setName("Excluded folders")
+			.setDesc("One folder path per line. Files inside these folders are skipped by the scanner.")
+			.addTextArea(text => {
+				text.inputEl.rows = 4;
+				text.setPlaceholder("Archive\nTemplates/Old")
+					.setValue(getSettings().scannerExcludeFolders.join("\n"))
+					.onChange(async value => {
+						await updateSettings({ scannerExcludeFolders: parseFolderList(value) });
+					});
+			});
+
+		new Setting(containerEl)
+			.setName("Scan notes")
+			.setDesc("Compare notes with their nearest template.")
+			.addToggle(toggle => toggle
+				.setValue(getSettings().scannerTargets.notes)
+				.onChange(async value => {
+					await updateSettings({
+						scannerTargets: { ...getSettings().scannerTargets, notes: value },
+					});
+				}));
+
+		new Setting(containerEl)
+			.setName("Scan templates")
+			.setDesc("Compare templates with their parent template.")
+			.addToggle(toggle => toggle
+				.setValue(getSettings().scannerTargets.templates)
+				.onChange(async value => {
+					await updateSettings({
+						scannerTargets: { ...getSettings().scannerTargets, templates: value },
+					});
 				}));
 	}
 }

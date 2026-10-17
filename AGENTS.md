@@ -28,7 +28,7 @@ TypeScript source bundled by esbuild into `main.js`. Single package, no test sui
 - `src/core/reconformHistory.ts` - per-`MarkdownView` undo stack (snapshot before each action).
 - `src/core/templaterBridge.ts` - optional runtime bridge to Templater (opt-in, notes only).
 - `src/features/metadataPanel.ts` - per-view metadata panel toolbar (status / reconform / undo).
-- `src/scanner/` - vault-wide coherence scanner (`TemplateScannerModal`, `ScannerABC` subclasses).
+- `src/scanner/` - vault-wide scanner (`TemplateScannerModal`, `ScannerABC` subclasses): notes vs template and template vs parent, cache-only, scope from settings.
 - `src/conts.ts` - static defaults only (`DEFAULT_TEMPLATE_BASENAME = "!Template"`).
 
 ## Domain rules
@@ -36,6 +36,7 @@ TypeScript source bundled by esbuild into `main.js`. Single package, no test sui
 - Auto-apply (D1) applies the nearest template to newly created `.md` files that still have an empty body after a 300 ms settle, once `workspace.layoutReady` is true. The trigger is name-agnostic and view-agnostic (works for Bases row edits); templates inherit from their parent too. Synced/imported notes that already carry content are skipped.
 - Frontmatter key order is preserved (`yaml` package).
 - Obsidian injects `position` into cached frontmatter; ignore it when comparing/merging.
+- The scanner is read-only: it inspects `metadataCache` and opens files, never writes. Its scope comes from `scannerExcludeFolders` / `scannerTargets`.
 
 ## Conventions
 - `tsconfig` `baseUrl "."`: `main.ts` imports use `src/...`, files under `src/` use relative imports. Match neighbors.

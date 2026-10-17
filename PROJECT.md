@@ -82,11 +82,22 @@ Dettagli:
 - Sync/import: le note che arrivano con contenuto sono scartate; un singolo file vuoto può ricevere le props (merge non distruttivo).
 - Pannello: `panelVisibility` vale `always` o `onlyWithTemplate`; il secondo nasconde status e pulsanti quando non c'è un template.
 
-## 10. Riferimenti al codice
+## 10. Scanner (E)
+
+- Una sola Modal (`TemplateScannerModal`) con due scanner: note vs template e template vs parent.
+- Solo `metadataCache`: nessun `vault.read` per file.
+- Scope dalle settings: `scannerExcludeFolders` (match per prefisso, case-insensitive) e
+  `scannerTargets` (note / template).
+- Template vs parent segnala solo le proprietà mancanti; le proprietà extra sono attese (un template
+  annidato specializza il parent).
+- Autofix non ancora disponibile (E2). Lo scanner legge e apre file, non modifica nulla.
+
+## 11. Riferimenti al codice
 
 - `src/features/metadataPanel.ts` — UI, stati del cursore, sessione, visibilità.
 - `src/core/templateAPI.ts` — `reconformFile`, `computeReconformProps`, `computeTemplateConformance`, auto-apply.
 - `src/core/reconformHistory.ts` — stack Back.
 - `src/core/mapOperations.ts` — merge, conformità, `areMapsEqual`.
 - `src/core/templaterBridge.ts` — ponte Templater (props e body).
-- `src/settings.ts` — modello impostazioni e tab.
+- `src/settings.ts` — modello impostazioni, tab, scope dello scanner.
+- `src/scanner/` — `TemplateScannerModal`, `CoherenceScanner`, `TemplateCoherenceScanner`.
