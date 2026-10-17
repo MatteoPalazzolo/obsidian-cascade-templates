@@ -111,13 +111,20 @@
 .cascade-templates-toolbar {
     display: inline-flex;
     align-items: center;
-    gap: var(--size-4-1);
+    /* TODO 
+    gap: var(--size-4-1);*/
     margin-left: var(--size-2-3);
+    border-bottom: 2px solid #333;
 
     /* D1 — see above: hidden together with the status indicator. */
     &.cascade-templates-hidden {
         display: none;
     }
+
+    &:hover {
+        border-color: #444;
+    }
+
 }
 
 .cascade-templates-action {
@@ -147,12 +154,31 @@
     white-space: nowrap;
     cursor: var(--cursor);
     user-select: none;
+    
+    font-family: monospace;
 
     /* H5: only the reconform button has a variable label ("Reconform" /
        "Remove extra" / "Reset"). Reserve the longest in `ch` so the control
        never jumps when the phase changes. Not applied to Back. */
-    &.cascade-templates-reconform > .text-button-label {
-        min-width: 5ch;
+    &.cascade-templates-reconform {
+        border-top-right-radius: 0;
+        border-bottom-right-radius: 0;
+        border-bottom-left-radius: 0;
+        & > .text-button-label {
+            min-width: 5ch;
+        }
+    }
+
+    &.cascade-templates-back {
+        border-top-left-radius: 0;
+        border-bottom-left-radius: 0;
+        border-bottom-right-radius: 0;
+    }
+
+    /* ICON COLOR FIX */
+    &.cascade-templates-reconform > .text-button-icon,
+    &.cascade-templates-back > .text-button-icon {
+        color: inherit;
     }
 
     /* H4 level 2 — a live action that would change nothing (no-op): attenuated,
@@ -169,5 +195,18 @@
         color: var(--text-faint);
         opacity: 0.5;
         cursor: default;
+    }
+}
+
+/* fix obsidian's "+ Add property" */
+.metadata-add-button.text-icon-button {
+    margin-left: 8px;
+    padding-left: 3px;
+    font-family: monospace;
+    border-bottom: 2px solid #333;
+    border-bottom-left-radius: 0;
+    border-bottom-right-radius: 0;
+    &:hover {
+        border-color: #444;
     }
 }

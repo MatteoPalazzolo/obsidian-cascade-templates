@@ -107,6 +107,7 @@ const DISABLED_CLASS = "cascade-templates-disabled";
 const NOOP_CLASS = "cascade-templates-noop";
 /** AI: H5 — fixed-width marker for the reconform button only. */
 const RECONFORM_CLASS = "cascade-templates-reconform";
+const BACK_CLASS = "cascade-templates-back";
 /** AI: D1 — hides the toolbar when the "only when a template applies" policy is on. */
 const HIDDEN_CLASS = "cascade-templates-hidden";
 const METADATA_CONTAINER_SELECTOR = ".metadata-container";
@@ -150,9 +151,10 @@ type ReconformPhase = 0 | 1 | 2 | 3;
  * AI: The three executable phases, in order. Label/icon/action are looked up by
  * phase index; the button no longer derives its phase from conformance (H1).
  */
-// FILL --> ALIGN --> CLEAR --> OFF
+// UPDATE --> ALIGN --> RESET --> OFF
+// stamp, hammer
 const PHASE_CONFIG: PhaseConfig[] = [
-	{ mode: "add-missing", icon: "wrench", label: "Fill", action: "add the missing properties" },
+	{ mode: "add-missing", icon: "wrench", label: "Update", action: "add the missing properties" },
 	{ mode: "remove-extra", icon: "anvil", label: "Align", action: "remove the extra properties" },
 	{ mode: "reset-defaults", icon: "brush-cleaning", label: "Reset", action: "reset the properties to defaults" },
 ];
@@ -289,7 +291,8 @@ function createPanel(view: MarkdownView): PanelUI {
 
 	const reconform = createActionButton("list-restart", "Reconform");
 	reconform.el.classList.add(RECONFORM_CLASS);
-	const backBtn = createActionButton("undo-2", "Back");
+	const backBtn = createActionButton("undo-2", "Back", true);
+	backBtn.el.classList.add(BACK_CLASS);
 	actionsEl.append(reconform.el, backBtn.el);
 
 	const ui: PanelUI = {
@@ -323,7 +326,7 @@ function createPanel(view: MarkdownView): PanelUI {
  * (`text-button-icon` + `text-button-label`), but under our own class so the
  * native add button selector never matches it.
  */
-function createActionButton(icon: string, label: string): {
+function createActionButton(icon: string, label: string, flipped=false): {
 	el: HTMLDivElement;
 	iconEl: HTMLElement;
 	labelEl: HTMLElement;
@@ -341,7 +344,12 @@ function createActionButton(icon: string, label: string): {
 	labelEl.classList.add("text-button-label");
 	labelEl.setText(label);
 
-	el.append(iconEl, labelEl);
+	if (flipped) {
+		el.append(labelEl, iconEl);
+	} else {
+		el.append(iconEl, labelEl);
+	}
+
 	return { el, iconEl, labelEl };
 }
 

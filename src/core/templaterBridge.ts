@@ -44,7 +44,8 @@ interface TemplaterApi {
 /** AI: Shape of `app.plugins` (not part of the public Obsidian typings). */
 interface PluginsHost {
 	plugins?: {
-		plugins?: Record<string, { templater?: TemplaterApi } | undefined>;
+		plugins?: Record<string, { templater?: TemplaterApi; manifest?: { version?: string } } | undefined>;
+		manifests?: Record<string, { version?: string } | undefined>;
 	};
 }
 
@@ -74,6 +75,18 @@ export function getTemplaterApi(app: App): TemplaterApi | null {
 /** AI: True when Templater is available. */
 export function isTemplaterAvailable(app: App): boolean {
 	return getTemplaterApi(app) !== null;
+}
+
+/**
+ * AI: Version of the installed Templater plugin, or `null` when it is not
+ * present. Uses the runtime plugin registry (not part of the public typings),
+ * so it is only used for the status line in the settings tab.
+ */
+export function getTemplaterVersion(app: App): string | null {
+	const host = app as unknown as PluginsHost;
+	const version = host.plugins?.plugins?.[TEMPLATER_PLUGIN_ID]?.manifest?.version
+		?? host.plugins?.manifests?.[TEMPLATER_PLUGIN_ID]?.version;
+	return typeof version === "string" && version.length > 0 ? version : null;
 }
 
 /**

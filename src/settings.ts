@@ -1,6 +1,6 @@
 import { Plugin, PluginSettingTab, Setting, TAbstractFile } from "obsidian";
 import { DEFAULT_TEMPLATE_BASENAME, TEMPLATE_FILE_EXTENSION } from "./conts";
-import { isTemplaterAvailable } from "./core/templaterBridge";
+import { evaluateTemplaterContent, getTemplaterVersion, isTemplaterAvailable } from "./core/templaterBridge";
 
 /**
  * AI: Settings model, persistence and accessors.
@@ -271,7 +271,7 @@ export class CascadeTemplatesSettingTab extends PluginSettingTab {
 				`values coming from ${getTemplateFilename()} through Templater.`,
 				`Never applied to template files. Enable only if you trust your templates: "<%* … %>" runs code.`,
 			].join(" ")
-			: "Templater is not installed or enabled: template expressions are copied verbatim into notes.";
+			: "Templater is not installed or not enabled: template expressions are copied verbatim into notes.";
 
 		new Setting(containerEl)
 			.setName("Evaluate Templater scripts in notes")
@@ -282,6 +282,35 @@ export class CascadeTemplatesSettingTab extends PluginSettingTab {
 				.onChange(async value => {
 					await updateSettings({ evaluateTemplaterInNotes: value });
 				}));
+
+		// AI: G6 — small status dashboard. The description starts as a placeholder
+		// and is replaced with the real integration state when Test is pressed.
+		const bridgeStatus = new Setting(containerEl)
+			.setName("Templater bridge test")
+			.setDesc("---");
+
+		bridgeStatus.addButton(button => button
+			.setButtonText("Test")
+			.onClick(async () => {
+				const target = this.app.workspace.getActiveFile();
+				if (!target) {
+					bridgeStatus.setDesc("Open a note before testing");
+					return;
+				}
+
+				const version = getTemplaterVersion(this.app);
+				const detected = version ? `Templater detected v${version}` : "Templater detected";
+
+				if (!isTemplaterAvailable(this.app)) {
+					bridgeStatus.setDesc("Templater not detected");
+					return;
+				}
+
+				const rendered = await evaluateTemplaterContent(this.app, "<% 1 + 1 %>", target);
+				bridgeStatus.setDesc(rendered === null
+					? `${detected} — bridge failed`
+					: `${detected} — bridge established`);
+			}));
 
 		new Setting(containerEl)
 			.setName("Show the properties toolbar")

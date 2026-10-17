@@ -41,6 +41,10 @@ Show the properties toolbar:
 
 ## Templater
 
+Nelle impostazioni, la riga Templater bridge test parte con ---.
+Premi Test: sulla nota attiva valuta una piccola espressione e sostituisce --- con lo stato,
+per esempio Templater detected v2.18.1 - bridge established.
+Se Templater non è rilevato o il ponte fallisce, lo dice nella stessa riga.
 Se in Templater è attivo il trigger alla creazione dei file, Templater valuta le espressioni <% %>
 anche nei file !Template.md, quindi i template non restano grezzi.
 Disattiva quel trigger se vuoi conservare le espressioni nei template.

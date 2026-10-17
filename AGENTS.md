@@ -27,7 +27,7 @@ TypeScript source bundled by esbuild into `main.js`. Single package, plus a pure
 - `src/core/mapOperations.ts` - property merge + conformance (`ok`/`extra`/`missing`).
 - `src/core/setOperations.ts` - pure Set helpers (mobile-safe replacement of the TC39 Set methods).
 - `src/core/reconformHistory.ts` - per-`MarkdownView` undo stack (snapshot before each action).
-- `src/core/templaterBridge.ts` - optional runtime bridge to Templater (opt-in, notes only).
+- `src/core/templaterBridge.ts` - optional runtime bridge to Templater (opt-in, notes only); also exposes availability/version for the settings status.
 - `src/features/metadataPanel.ts` - per-view metadata panel toolbar (status / reconform / undo).
 - `src/scanner/` - vault-wide scanner modules (`TemplateScannerModal`, `ScannerABC` subclasses): notes vs template and template vs parent, cache-only, scope from settings. Not imported by the plugin in 1.0.0, so it is not bundled.
 - `src/conts.ts` - static defaults only (`DEFAULT_TEMPLATE_BASENAME = "!Template"`).

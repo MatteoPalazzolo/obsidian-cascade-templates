@@ -179,6 +179,9 @@ Per **ogni** view markdown visibile (split pane), riga del pannello Properties:
 - **G3** Setting "Evaluate Templater scripts in notes" (default off, attivo solo se Templater rilevato).
 - **G4** Guardrail nel tooltip del reconform quando l'opzione è off.
 - **G5** Test headless (16 assert).
+- **G6** Mini-dashboard nelle impostazioni: riga "Templater bridge test" con `---` iniziale; il
+  pulsante Test valuta `<% 1 + 1 %>` sulla nota attiva e sostituisce il testo con stato, versione ed
+  esito (`bridge established` / `bridge failed`).
 - Note: API `create_running_config` + `parse_template` dietro feature detection e `try/catch`;
   `parse_template` non è API pubblica → degrado con grazia; in v1 liste/oggetti non riconvertiti.
 
