@@ -160,8 +160,12 @@ export async function setFileProps(file: TFile | undefined, newPropsMap: Map<str
 
 	// `doc.toString()` already terminates with a newline; an empty map drops the
 	// block entirely. A blank line always separates the block from the body.
+	//
+	// `nullStr: ""` serializes a null value as an empty entry (`key:`) instead of
+	// the default explicit `key: null`. YAML resolves both to the same null value,
+	// so nothing is lost, and the output matches Obsidian's own empty-property form.
 	const finalContent = newPropsMap.size > 0
-		? `---\n${doc.toString()}---\n\n${markdownBody}`
+		? `---\n${doc.toString({ nullStr: "" })}---\n\n${markdownBody}`
 		: markdownBody;
 
 	await getCtx().app.vault.modify(file, finalContent);
