@@ -75,8 +75,10 @@ Per **ogni** view markdown visibile (split pane), riga del pannello Properties:
   etichetta; l'undo no.
 - **Set methods**: sostituire i metodi nativi TC39 (`Set.prototype.intersection`, `isSubsetOf`, ...)
   con helper puri, per compatibilità con WebView mobile datate.
-- **Settings**: template filename, auto-apply on/off, scanner scope (+ esclusioni), comportamento
-  senza template (hide/disabled).
+- **Settings**: template filename, auto-apply (`off` / `properties` / `full`), scanner scope
+  (+ esclusioni), visibilità toolbar (`always` / `onlyWithTemplate`).
+- **Auto-apply**: il trigger è "file nuovo con body vuoto", non "file chiamato Untitled"; deve
+  funzionare anche per le note create/editate dentro una Base, senza aprire una view.
 - **Scanner**: resta una **Modal** (nessuna View persistente).
 - **Stringhe sorgente**: standardizzate in **inglese** (nuovi commenti in inglese caratterizzati dal
   prefisso AI per distinguere chi li scrive).
@@ -183,6 +185,16 @@ Per **ogni** view markdown visibile (split pane), riga del pannello Properties:
 - Note: API `create_running_config` + `parse_template` dietro feature detection e `try/catch`;
   `parse_template` non è API pubblica → degrado con grazia; in v1 liste/oggetti non riconvertiti.
 
+### Sessione D — Settings (parziale)
+
+- **D1a** auto-apply con `autoApply` (`off` / `properties` / `full`). Trigger su `create` +
+  `layoutReady` + 300 ms + body vuoto, ricontrollato dentro `vault.process`; niente `Untitled`,
+  niente `file-open`. Template annidati ereditano dal parent (props e, in `full`, body); Templater
+  solo sulle note.
+- **D1b** `panelVisibility` (`always` / `onlyWithTemplate`) con toolbar nascosta via CSS quando non
+  c'è un template.
+- Restano per D1 le impostazioni dello scanner (vedi E4).
+
 ---
 
 ## Roadmap
@@ -191,28 +203,32 @@ Per **ogni** view markdown visibile (split pane), riga del pannello Properties:
 
 Origine: `NEXT.md`. Atomicità e non invasività invariate.
 
-- [ ] **H1** Cursore per-view in `metadataPanel.ts`: campo di avanzamento in `PanelUI`
+- [x] **H1** Cursore per-view in `metadataPanel.ts`: campo di avanzamento in `PanelUI`
       (0=Reconform, 1=Remove extra, 2=Reset, 3=concluso); il mode **non** è più derivato da
       `computeMapConformance`; avanzamento di una fase per click fino a Reset, poi click **inerti**;
       reset del cursore agganciato alla notifica `hasHistory=false` (stessi trigger di B2).
-- [ ] **H2** Snapshot a ogni pressione "viva": rimozione della guardia `if (changed)`; in
+- [x] **H2** Snapshot a ogni pressione "viva": rimozione della guardia `if (changed)`; in
       `ReconformSnapshot` si salva anche la fase pre-press; `undo` ripristina props **e** fase e salta
       la scrittura quando le props sono identiche. Dipende da H1.
-- [ ] **H3** Etichette `Reconform` / `Remove extra` / `Reset`; tooltip: status = stato + path del
+- [x] **H3** Etichette `Reconform` / `Remove extra` / `Reset`; tooltip: status = stato + path del
       template di riferimento; reconform = descrizione dello stato corrente (contesto note/template);
       il warning Templater (G4) resta sul reconform.
-- [ ] **H4** Convenzione colore a 3 livelli sul reconform (attivo / no-op attenuato / disabled) +
+- [x] **H4** Convenzione colore a 3 livelli sul reconform (attivo / no-op attenuato / disabled) +
       helper di actionability per fase. Dipende da H1. Nota: la fase Reset è no-op solo se
       `areMapsEqual(current, template)`, non se `status === 'ok'`.
-- [ ] **H5** Larghezza fissa del solo pulsante reconform con `min-width` in `ch` (evita il salto di
+- [x] **H5** Larghezza fissa del solo pulsante reconform con `min-width` in `ch` (evita il salto di
       layout al cambio etichetta).
 
 ### Sessione D — Settings + fondamenta
 
-- [ ] **D1** `src/settings.ts` + `PluginSettingTab` con `loadData`/`saveData`: template filename,
-      auto-apply on/off, scanner scope (+ esclusioni), comportamento senza template (hide/disabled).
-      *Fatto finora: Template file name + toggle Templater. Restano auto-apply on/off, scanner scope,
-      comportamento senza template.*
+- [ ] **D1** Restano le impostazioni dello scanner (`scannerExcludeFolders`, `scannerTargets`), da
+      fare insieme a E1/E4. Auto-apply e visibilità toolbar sono chiuse in D1a/D1b (vedi log).
+- [x] **D1a** Auto-apply: `autoApply` con `off` / `properties` (default) / `full`. Trigger
+      `create` + `layoutReady` + 300 ms + body vuoto, ricontrollato atomicamente in `vault.process`.
+      Niente nome `Untitled`, niente `file-open`; i template annidati ereditano dal parent (props e,
+      in `full`, body). Templater solo sulle note.
+- [x] **D1b** Visibilità toolbar: `panelVisibility` con `always` (default) / `onlyWithTemplate`;
+      il secondo nasconde status e pulsanti quando non c'è un template.
 - [x] **D2** Nome del file template configurabile: default **`!Template`** (basename, `.md`
       implicito), salvato nelle settings; helper `getTemplateFilename()` (basename → `!Template.md`)
       e `isTemplateFile(file)`, riusati da panel, scanner e dal bridge Templater (G2). I vault

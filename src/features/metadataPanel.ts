@@ -107,6 +107,8 @@ const DISABLED_CLASS = "cascade-templates-disabled";
 const NOOP_CLASS = "cascade-templates-noop";
 /** AI: H5 — fixed-width marker for the reconform button only. */
 const RECONFORM_CLASS = "cascade-templates-reconform";
+/** AI: D1 — hides the toolbar when the "only when a template applies" policy is on. */
+const HIDDEN_CLASS = "cascade-templates-hidden";
 const METADATA_CONTAINER_SELECTOR = ".metadata-container";
 const ADD_BUTTON_SELECTOR = ".metadata-add-button";
 
@@ -408,8 +410,13 @@ async function refreshPanel(ui: PanelUI, fresh = false, contentChanged = false):
 	// it before anything is recomputed.
 	ensureCursor(ui);
 
+	// AI: D1 — "only when a template applies" keeps the panel out of unrelated
+	// notes; the default "always" preserves the neutral state.
+	const hideWithoutTemplate = getSettings().panelVisibility === "onlyWithTemplate";
+
 	const file = ui.view.file;
 	if (!file) {
+		setPanelVisible(ui, !hideWithoutTemplate);
 		setStatus(ui, STATUS_NEUTRAL);
 		setReconformUnavailable(ui, "No file is open in this view");
 		updateBackState(ui);
@@ -419,6 +426,7 @@ async function refreshPanel(ui: PanelUI, fresh = false, contentChanged = false):
 	const isTemplate = isTemplateFile(file);
 	const reference = getTemplateOfFile(file);
 	if (!reference) {
+		setPanelVisible(ui, !hideWithoutTemplate);
 		setStatus(ui, isTemplate ? STATUS_NO_PARENT : STATUS_NEUTRAL);
 		setReconformUnavailable(ui, isTemplate
 			? "This template has no parent template"
@@ -426,6 +434,8 @@ async function refreshPanel(ui: PanelUI, fresh = false, contentChanged = false):
 		updateBackState(ui);
 		return;
 	}
+
+	setPanelVisible(ui, true);
 
 	const currentProps = fresh ? await getFileProps(file) : getFilePropsMapFromCache(file);
 	const referenceProps = fresh ? await getFileProps(reference) : getFilePropsMapFromCache(reference);
@@ -472,6 +482,15 @@ function templaterWarning(templateProps: Map<string, any>): string | null {
 	return hasExpression
 		? "The template contains Templater expressions; enable \"Evaluate Templater scripts in notes\" to render them"
 		: null;
+}
+
+/**
+ * AI: D1 — shows/hides the injected toolbar without detaching it, so switching
+ * the setting back restores the exact same elements and state.
+ */
+function setPanelVisible(ui: PanelUI, visible: boolean): void {
+	ui.statusEl.classList.toggle(HIDDEN_CLASS, !visible);
+	ui.actionsEl.classList.toggle(HIDDEN_CLASS, !visible);
 }
 
 /** AI: Applies a status indicator configuration, with the reference path (H3). */

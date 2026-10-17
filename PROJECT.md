@@ -71,10 +71,22 @@ Dettagli:
 - I tipi del pacchetto dev `obsidian` sono **pinnati alla linea 1.5**: il compilatore impedisce di usare API più nuove di quelle dichiarate.
 - Le icone **Lucide** sono un asset runtime legato alla versione di Obsidian: rendono tutte tramite `setIconSafe` / `resolvableIcon` (fallback), così non dettano la soglia.
 
-## 9. Riferimenti al codice
+## 9. Auto-apply (D1)
 
-- `src/features/metadataPanel.ts` — UI, stati del cursore, sessione.
-- `src/core/templateAPI.ts` — `reconformFile`, `computeReconformProps`, `computeTemplateConformance`.
+- Tre modalità: `off`, `properties` (default), `full`.
+- Trigger indipendente dalla lingua e dalla view: `create` di un `.md` con body vuoto dopo 300 ms, solo a `workspace.layoutReady`; niente nome `Untitled`, niente `file-open` (funziona anche con le righe create/editate dentro una Base).
+- Il body è ricontrollato atomicamente dentro `vault.process`: se l'utente ha scritto nel frattempo, l'azione si annulla.
+- Il frontmatter è sempre unito con `add-missing`: i valori esistenti vincono, anche su file creati da una Base.
+- `full` copia anche il body del template. Sui template annidati l'ereditarietà è totale (props + body), ma le espressioni `<% %>` restano raw.
+- Templater: solo note e solo col toggle attivo; template mai. Se `trigger_on_file_creation` di Templater è attivo, Templater valuta le espressioni anche nei `!Template.md`: è un comportamento esterno al plugin, documentato in `UX.md`.
+- Sync/import: le note che arrivano con contenuto sono scartate; un singolo file vuoto può ricevere le props (merge non distruttivo).
+- Pannello: `panelVisibility` vale `always` o `onlyWithTemplate`; il secondo nasconde status e pulsanti quando non c'è un template.
+
+## 10. Riferimenti al codice
+
+- `src/features/metadataPanel.ts` — UI, stati del cursore, sessione, visibilità.
+- `src/core/templateAPI.ts` — `reconformFile`, `computeReconformProps`, `computeTemplateConformance`, auto-apply.
 - `src/core/reconformHistory.ts` — stack Back.
 - `src/core/mapOperations.ts` — merge, conformità, `areMapsEqual`.
-- `src/core/templaterBridge.ts` — ponte Templater.
+- `src/core/templaterBridge.ts` — ponte Templater (props e body).
+- `src/settings.ts` — modello impostazioni e tab.

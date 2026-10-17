@@ -14,6 +14,31 @@ import { isTemplaterAvailable } from "./core/templaterBridge";
  * poll `loadData` again.
  */
 
+/**
+ * AI: What happens to a newly created markdown file (D1 / auto-apply).
+ *
+ * - `off`        → never touch new files.
+ * - `properties` → merge the missing properties of the nearest template
+ *                   (`add-missing`), leaving the body untouched.
+ * - `full`       → also copy the template body (frontmatter still merged, so
+ *                   values already on the file win).
+ *
+ * The mode is uniform for notes and templates: a new nested `!Template.md`
+ * inherits properties (always) and body (in `full`), which is the "template
+ * inheritance" use case. Templater is only ever applied to notes.
+ */
+export type AutoApplyMode = "off" | "properties" | "full";
+
+/**
+ * AI: How much of the metadata toolbar is shown (D1).
+ *
+ * - `always`          → status + reconform + Back on every markdown view, with
+ *                        the neutral/disabled state when no template applies.
+ * - `onlyWithTemplate` → the toolbar is hidden when there is nothing to compare
+ *                        against, keeping notes outside the cascade clean.
+ */
+export type PanelVisibility = "always" | "onlyWithTemplate";
+
 /** AI: User-configurable behaviour of the plugin. */
 export interface CascadeTemplatesSettings {
 	/**
@@ -29,12 +54,20 @@ export interface CascadeTemplatesSettings {
 	 * evaluated. Default off: without it the raw value is copied verbatim.
 	 */
 	evaluateTemplaterInNotes: boolean;
+
+	/** AI: Behaviour on new files (D1); see `AutoApplyMode`. */
+	autoApply: AutoApplyMode;
+
+	/** AI: Visibility of the injected toolbar when no template applies (D1). */
+	panelVisibility: PanelVisibility;
 }
 
 /** AI: Fallbacks applied on top of whatever `data.json` contains. */
 export const DEFAULT_SETTINGS: CascadeTemplatesSettings = {
 	templateBasename: DEFAULT_TEMPLATE_BASENAME,
 	evaluateTemplaterInNotes: false,
+	autoApply: "properties",
+	panelVisibility: "always",
 };
 
 /** AI: Plugin handle, needed to load/save `data.json`. */
@@ -53,7 +86,25 @@ const listeners = new Set<(settings: CascadeTemplatesSettings) => void>();
 export async function initSettings(host: Plugin): Promise<void> {
 	plugin = host;
 	const stored = (await host.loadData()) as Partial<CascadeTemplatesSettings> | null;
-	settings = { ...DEFAULT_SETTINGS, ...(stored ?? {}) };
+	settings = normalizeSettings(stored);
+}
+
+/**
+ * AI: Merges stored data with the defaults and discards values that are no
+ * longer valid (e.g. a corrupted `data.json`), so the rest of the code can
+ * always switch on the unions above without extra guards.
+ */
+function normalizeSettings(stored: Partial<CascadeTemplatesSettings> | null): CascadeTemplatesSettings {
+	const merged = { ...DEFAULT_SETTINGS, ...(stored ?? {}) };
+
+	if (merged.autoApply !== "off" && merged.autoApply !== "properties" && merged.autoApply !== "full") {
+		merged.autoApply = DEFAULT_SETTINGS.autoApply;
+	}
+	if (merged.panelVisibility !== "always" && merged.panelVisibility !== "onlyWithTemplate") {
+		merged.panelVisibility = DEFAULT_SETTINGS.panelVisibility;
+	}
+
+	return merged;
 }
 
 /** AI: Read-only view of the current settings. */
@@ -128,10 +179,28 @@ export class CascadeTemplatesSettingTab extends PluginSettingTab {
 					await updateSettings({ templateBasename: value });
 				}));
 
+		new Setting(containerEl)
+			.setName("Apply the template to new files")
+			.setDesc(
+				`A file created inside Obsidian (note or ${getTemplateFilename()}) receives the nearest ` +
+				`template's properties. "Properties and body" also copies the template body; existing ` +
+				`properties are kept. Templates always inherit raw expressions; Templater evaluation ` +
+				`only applies to notes.`
+			)
+			.addDropdown(dropdown => dropdown
+				.addOption("off", "Off")
+				.addOption("properties", "Properties only")
+				.addOption("full", "Properties and body")
+				.setValue(getSettings().autoApply)
+				.onChange(async value => {
+					await updateSettings({ autoApply: value as AutoApplyMode });
+				}));
+
 		const templaterAvailable = isTemplaterAvailable(this.app);
 		const templaterDescription = templaterAvailable
 			? [
-				`When a note is reconformed, evaluate "<% … %>" values coming from ${getTemplateFilename()} through Templater.`,
+				`When a note is reconformed or created with "Properties and body", evaluate "<% … %>"`,
+				`values coming from ${getTemplateFilename()} through Templater.`,
 				`Never applied to template files. Enable only if you trust your templates: "<%* … %>" runs code.`,
 			].join(" ")
 			: "Templater is not installed or enabled: template expressions are copied verbatim into notes.";
@@ -144,6 +213,20 @@ export class CascadeTemplatesSettingTab extends PluginSettingTab {
 				.setDisabled(!templaterAvailable)
 				.onChange(async value => {
 					await updateSettings({ evaluateTemplaterInNotes: value });
+				}));
+
+		new Setting(containerEl)
+			.setName("Show the properties toolbar")
+			.setDesc(
+				`Whether the status icon, reconform and Back buttons are shown on every markdown view, ` +
+				`or only when a template applies to the file.`
+			)
+			.addDropdown(dropdown => dropdown
+				.addOption("always", "Always")
+				.addOption("onlyWithTemplate", "Only when a template applies")
+				.setValue(getSettings().panelVisibility)
+				.onChange(async value => {
+					await updateSettings({ panelVisibility: value as PanelVisibility });
 				}));
 	}
 }

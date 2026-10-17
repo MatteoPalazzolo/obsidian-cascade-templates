@@ -17,11 +17,12 @@ TypeScript source bundled by esbuild into `main.js`. Single package, no test sui
 - `main.js` is a generated, gitignored bundle. Never edit it; rebuild instead.
 - New/changed files must be LF (`.editorconfig` `end_of_line = lf`).
 - Ti trovi all'interno di una sandbox che gira su WSL con il progetto condiviso in un mount da una cartella di windows, tienine conto.
+- Templater with `trigger_on_file_creation` on evaluates `<% … %>` in every new `.md` file under 100 KB, including `!Template.md` (its `on_file_creation` falls into an unconditional overwrite branch). Templates are only safe inside Templater's own `templates_folder`; our bridge cannot prevent that write.
 
 ## Architecture
 - `main.ts` - plugin entry (`onload`/`onunload`); wire modules here (settings → core → UI).
 - `src/settings.ts` - user settings + persistence + `PluginSettingTab`; exposes `getTemplateFilename()` / `isTemplateFile()`.
-- `src/core/templateAPI.ts` - template resolution + frontmatter read/write + `reconformFile`. Module-level plugin context: `init(this)` in onload, then use `getCtx().app` inside these functions, never `this.app`.
+- `src/core/templateAPI.ts` - template resolution + frontmatter read/write + `reconformFile` + auto-apply. Module-level plugin context: `init(this)` in onload, then use `getCtx().app` inside these functions, never `this.app`.
 - `src/core/mapOperations.ts` - property merge + conformance (`ok`/`extra`/`missing`).
 - `src/core/setOperations.ts` - pure Set helpers (mobile-safe replacement of the TC39 Set methods).
 - `src/core/reconformHistory.ts` - per-`MarkdownView` undo stack (snapshot before each action).
@@ -32,7 +33,7 @@ TypeScript source bundled by esbuild into `main.js`. Single package, no test sui
 
 ## Domain rules
 - A note inherits the nearest ancestor `!Template.md` walking up its folder chain; nested templates override.
-- Auto-apply triggers only on new untitled empty notes (`create` event, name starts `Untitled`).
+- Auto-apply (D1) applies the nearest template to newly created `.md` files that still have an empty body after a 300 ms settle, once `workspace.layoutReady` is true. The trigger is name-agnostic and view-agnostic (works for Bases row edits); templates inherit from their parent too. Synced/imported notes that already carry content are skipped.
 - Frontmatter key order is preserved (`yaml` package).
 - Obsidian injects `position` into cached frontmatter; ignore it when comparing/merging.
 

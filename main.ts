@@ -1,5 +1,6 @@
 import {debounce, Plugin} from 'obsidian';
 import {
+	disposeTemplateAPI,
 	init as initTemplateAPIModule,
 	registerTemplatezListener,
 } from 'src/core/templateAPI';
@@ -41,12 +42,13 @@ export default class extends Plugin {
 		this.addRibbonIcon(resolvableIcon('scan-eye', 'search'), 'Template Scanner', () => new TemplateScannerModal(this.app).open());
 
 		this.app.workspace.onLayoutReady(() => {
-			void registerTemplatezListener();
+			registerTemplatezListener();
 			MetadataPanel.refreshAll();
 		});
 	}
 
 	onunload() {
+		disposeTemplateAPI();
 		MetadataPanel.clear();
 		disposeHistory();
 	}

@@ -89,6 +89,11 @@
     &.is-none {
         color: var(--text-faint);
     }
+
+    /* D1 — "only when a template applies": the whole injected toolbar is hidden. */
+    &.cascade-templates-hidden {
+        display: none;
+    }
 }
 
 .cascade-templates-toolbar {
@@ -96,6 +101,11 @@
     align-items: center;
     gap: var(--size-4-1);
     margin-left: var(--size-2-3);
+
+    /* D1 — see above: hidden together with the status indicator. */
+    &.cascade-templates-hidden {
+        display: none;
+    }
 }
 
 .cascade-templates-action {

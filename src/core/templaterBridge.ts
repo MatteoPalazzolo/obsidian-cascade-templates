@@ -17,7 +17,9 @@ import { App, TFile } from "obsidian";
  * - No public API guarantee: `create_running_config`/`parse_template` are
  *   internal. Every call is feature-detected and wrapped, and any failure
  *   degrades to `null` so the caller keeps the raw value.
- * - Never processes whole files or bodies: only the values the caller passes.
+ * - Processes only the strings the caller passes: single frontmatter values
+ *   during a reconform, or a template body during auto-apply. Never whole
+ *   files, and never template files.
  */
 
 /** AI: Plugin id as it appears in Obsidian's plugin registry. */
@@ -75,16 +77,16 @@ export function isTemplaterAvailable(app: App): boolean {
 }
 
 /**
- * AI: Renders a single value through Templater.
+ * AI: Renders an arbitrary text block through Templater.
  *
- * Returns the rendered string, or `null` when Templater is unavailable or the
- * evaluation fails. The caller must fall back to the raw value in that case:
- * this function never throws, so a bad expression can never abort a reconform.
+ * Used for single frontmatter values, but also for a whole template body when
+ * auto-apply runs in "Properties and body" mode: in both cases the caller is
+ * responsible for only handing over content that belongs to a NOTE (template
+ * files must always keep their expressions raw).
  *
- * Note: Templater functions such as `tp.system.prompt` will open their own UI;
- * that is the template author's responsibility.
+ * Returns `null` on failure so the caller can fall back to the raw text.
  */
-export async function evaluateTemplaterValue(app: App, source: string, targetFile: TFile): Promise<string | null> {
+export async function evaluateTemplaterContent(app: App, source: string, targetFile: TFile): Promise<string | null> {
 	const templater = getTemplaterApi(app);
 	if (!templater) return null;
 
@@ -95,4 +97,18 @@ export async function evaluateTemplaterValue(app: App, source: string, targetFil
 	} catch {
 		return null;
 	}
+}
+
+/**
+ * AI: Renders a single value through Templater.
+ *
+ * Returns the rendered string, or `null` when Templater is unavailable or the
+ * evaluation fails. The caller must fall back to the raw value in that case:
+ * this function never throws, so a bad expression can never abort a reconform.
+ *
+ * Note: Templater functions such as `tp.system.prompt` will open their own UI;
+ * that is the template author's responsibility.
+ */
+export async function evaluateTemplaterValue(app: App, source: string, targetFile: TFile): Promise<string | null> {
+	return evaluateTemplaterContent(app, source, targetFile);
 }

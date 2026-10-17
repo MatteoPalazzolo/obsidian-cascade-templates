@@ -3,7 +3,12 @@ import {isMap, isPair, isScalar, parseDocument, Document as Doc} from 'yaml';
 import {getSettings, getTemplateFilename, isTemplateFile} from "../settings";
 import {difference, isSubsetOf} from "./setOperations";
 import {areMapsEqual, mergeSecondOnFirstMap} from "./mapOperations";
-import {evaluateTemplaterValue, hasTemplaterSyntax, isTemplaterAvailable} from "./templaterBridge";
+import {
+	evaluateTemplaterContent,
+	evaluateTemplaterValue,
+	hasTemplaterSyntax,
+	isTemplaterAvailable,
+} from "./templaterBridge";
 
 let ctx: Plugin | undefined;
 
@@ -21,15 +26,60 @@ function getCtx(): Plugin {
 	return ctx;
 }
 
-export async function registerTemplatezListener() {
-	getCtx().registerEvent(
-		getCtx().app.vault.on("create", async file => {
-			if (!(file instanceof TFile) || file.extension !== "md") return;
+/**
+ * AI: D1 — how long to wait before inspecting a newly created file.
+ *
+ * Obsidian writes an empty file first and the creator may fill it right after
+ * (Templater, "new note from template", another plugin). 300 ms is the same
+ * settle time Templater uses, and it also leaves room for the Base row editor
+ * to write its initial frontmatter.
+ */
+const AUTO_APPLY_SETTLE_MS = 300;
 
-			// NOTA: create si triggera ad ogni avvio dell'app, non solo quando viene creato un nuovo file
-			if (file.name.startsWith("Untitled") && file.stat.size === 0) {
-				await applyTemplateToNewFile(file);
-			}
+/** AI: Auto-apply timers still pending, cleared on unload (non-invasive). */
+const pendingAutoApply = new Set<number>();
+
+/** AI: Cancels pending auto-apply work; call from `onunload`. */
+export function disposeTemplateAPI(): void {
+	for (const timer of pendingAutoApply) window.clearTimeout(timer);
+	pendingAutoApply.clear();
+}
+
+/**
+ * AI: Auto-apply listener (D1).
+ *
+ * A newly created markdown file gets the nearest template's properties (and,
+ * optionally, its body). The trigger is deliberately language-independent and
+ * view-independent:
+ *
+ * 1. only `.md` files, and only once the workspace layout is ready — the
+ *    initial vault indexing also emits `create` for existing files;
+ * 2. a short settle delay, then a **blank body** test (after the frontmatter):
+ *    synced/imported notes normally carry content and are skipped, while notes
+ *    created from a Base (which may pre-fill frontmatter, never the body) pass;
+ * 3. the blank test is repeated atomically inside `vault.process`, so a file
+ *    the user started typing in during the delay is left untouched.
+ *
+ * No filename heuristics (`Untitled` is localized) and no "was it opened in a
+ * view" requirement (Bases edit notes inline without a markdown view).
+ */
+export function registerTemplatezListener(): void {
+	const plugin = getCtx();
+
+	plugin.registerEvent(
+		plugin.app.vault.on("create", file => {
+			if (!(file instanceof TFile) || file.extension !== "md") return;
+			if (getSettings().autoApply === "off") return;
+
+			// Initial indexing must never template pre-existing files.
+			if (!plugin.app.workspace.layoutReady) return;
+
+			const timer = window.setTimeout(() => {
+				pendingAutoApply.delete(timer);
+				void autoApplyTemplateToNewFile(file).catch(() => undefined);
+			}, AUTO_APPLY_SETTLE_MS);
+
+			pendingAutoApply.add(timer);
 		})
 	);
 }
@@ -96,17 +146,14 @@ export function getFilePropsMapFromCache(file: TFile | undefined): Map<string, a
 }
 
 /**
- * Legge il frontmatter del file preservandone l'ordine esatto di lettura.
+ * AI: Ordered `Map` of the properties found in raw markdown content.
  *
- * AI: HARDENING — the parsed root is validated with `isMap` instead of the
- * previous duck-typed `'items' in items && Array.isArray(items.items)` check,
- * so non-mapping frontmatter (scalars/sequences) safely yields an empty Map.
+ * Pure parser shared by `getFileProps` (disk) and by auto-apply, which needs to
+ * inspect the exact string it is about to rewrite inside `vault.process`.
+ * Only the YAML mapping root is read; any other shape yields an empty Map.
  */
-export async function getFileProps(file: TFile | undefined): Promise<Map<string, any>> {
+export function parseFrontmatterProps(content: string): Map<string, any> {
 	const map = new Map<string, any>();
-	if (!file) return map;
-
-	const content = await getCtx().app.vault.read(file);
 	const doc = parseDocument(content);
 	const contents = doc.contents;
 
@@ -131,6 +178,19 @@ export async function getFileProps(file: TFile | undefined): Promise<Map<string,
 }
 
 /**
+ * Legge il frontmatter del file preservandone l'ordine esatto di lettura.
+ *
+ * AI: HARDENING — the parsed root is validated with `isMap` instead of the
+ * previous duck-typed `'items' in items && Array.isArray(items.items)` check,
+ * so non-mapping frontmatter (scalars/sequences) safely yields an empty Map.
+ */
+export async function getFileProps(file: TFile | undefined): Promise<Map<string, any>> {
+	if (!file) return new Map();
+	const content = await getCtx().app.vault.read(file);
+	return parseFrontmatterProps(content);
+}
+
+/**
  * AI: Writes the given properties as the file's frontmatter, preserving the
  * `Map` insertion order and rebuilding the markdown body untouched.
  *
@@ -147,28 +207,44 @@ export async function getFileProps(file: TFile | undefined): Promise<Map<string,
 export async function setFileProps(file: TFile | undefined, newPropsMap: Map<string, any>): Promise<void> {
 	if (!file) return;
 
-	// Build the YAML document explicitly from the ordered Map.
+	const rawContent = await getCtx().app.vault.read(file);
+	const markdownBody = stripFrontmatter(rawContent).replace(/^\r?\n/, '');
+	await getCtx().app.vault.modify(file, composeFileContent(newPropsMap, markdownBody));
+}
+
+/**
+ * AI: Serializes a property map and a body into the canonical frontmatter form.
+ *
+ * Single place shared by `setFileProps` and by auto-apply's "Properties and
+ * body" mode, so both emit exactly the same shape:
+ * - an empty map removes the block entirely;
+ * - otherwise `---` / yaml / `---` followed by one blank line and the body;
+ * - `nullStr: ""` serializes a null value as an empty entry (`key:`) instead of
+ *   the default explicit `key: null`, matching Obsidian's own empty property form;
+ * - one leading blank line in the body is normalized away, since the canonical
+ *   blank line after the block is added here.
+ */
+export function composeFileContent(props: Map<string, any>, body: string): string {
 	const doc = new Doc();
-	for (const [key, value] of newPropsMap.entries()) {
+	for (const [key, value] of props.entries()) {
 		doc.set(key, value);
 	}
 
-	const rawContent = await getCtx().app.vault.read(file);
-	// Normalize the body: no leading blank line, so the spacing after the block
-	// is decided by a single place below instead of by whatever was in the file.
-	const markdownBody = stripFrontmatter(rawContent).replace(/^\r?\n/, '');
-
-	// `doc.toString()` already terminates with a newline; an empty map drops the
-	// block entirely. A blank line always separates the block from the body.
-	//
-	// `nullStr: ""` serializes a null value as an empty entry (`key:`) instead of
-	// the default explicit `key: null`. YAML resolves both to the same null value,
-	// so nothing is lost, and the output matches Obsidian's own empty-property form.
-	const finalContent = newPropsMap.size > 0
+	const markdownBody = body.replace(/^\r?\n/, '');
+	return props.size > 0
 		? `---\n${doc.toString({ nullStr: "" })}---\n\n${markdownBody}`
 		: markdownBody;
+}
 
-	await getCtx().app.vault.modify(file, finalContent);
+/**
+ * AI: True when the file has no markdown body after its frontmatter block.
+ *
+ * This is the auto-apply gate: a note that already contains text (typed by the
+ * user, synced, or produced by Templater) is never touched, while a Base row
+ * that only carries frontmatter still counts as "new".
+ */
+function hasEmptyBody(content: string): boolean {
+	return stripFrontmatter(content).trim() === "";
 }
 
 /**
@@ -274,12 +350,83 @@ async function resolveTemplaterExpressions(file: TFile, props: Map<string, any>)
 	return resolved;
 }
 
-export async function applyTemplateToNewFile(file: TFile) {
+/**
+ * AI: Optional Templater step of auto-apply's "Properties and body" mode.
+ *
+ * Same contract as `resolveTemplaterExpressions`: only notes, only when the
+ * setting is on, feature-detected, and raw text on any failure. Templates never
+ * reach this function (the target is checked first), so their body stays a
+ * literal source even when a parent body is inherited.
+ */
+async function resolveAutoApplyBody(file: TFile, body: string): Promise<string> {
+	if (!getSettings().evaluateTemplaterInNotes) return body;
+	if (isTemplateFile(file)) return body;
+
+	const app = getCtx().app;
+	if (!isTemplaterAvailable(app)) return body;
+	if (!hasTemplaterSyntax(body)) return body;
+
+	const rendered = await evaluateTemplaterContent(app, body, file);
+	return rendered ?? body;
+}
+
+/**
+ * AI: Applies the nearest template to a newly created file (D1).
+ *
+ * Two gates protect the user's content:
+ * 1. the body must still be empty right after the settle delay;
+ * 2. the same test runs again **inside** `vault.process`, atomically with the
+ *    write, so typing during the delay cancels the action.
+ *
+ * Frontmatter is always merged with `add-missing` semantics (existing values
+ * win), because even a "new" file may already carry properties (e.g. a Base
+ * row). The body is only touched in `full` mode, and only because it is blank.
+ *
+ * Templates are handled exactly like notes: a new nested `!Template.md`
+ * inherits its parent's properties and, in `full`, its body. Templater is
+ * skipped for them, so inherited `<% … %>` expressions stay raw.
+ */
+async function autoApplyTemplateToNewFile(file: TFile): Promise<void> {
+	const mode = getSettings().autoApply;
+	if (mode === "off") return;
+
+	const app = getCtx().app;
 	const templateFile = getTemplateOfFile(file);
 	if (!templateFile) return;
 
-	const templateContent = await getCtx().app.vault.read(templateFile);
-	await getCtx().app.vault.modify(file, templateContent);
+	let content: string;
+	try {
+		content = await app.vault.read(file);
+	} catch {
+		// Deleted or moved while waiting for the settle delay.
+		return;
+	}
+	if (!hasEmptyBody(content)) return;
+
+	const templateContent = await app.vault.read(templateFile);
+	const templateProps = parseFrontmatterProps(templateContent);
+
+	// Evaluate only the template side: current values always win in the merge,
+	// so they must not be rendered or replaced.
+	const resolvedProps = await resolveTemplaterExpressions(file, templateProps);
+	const body = mode === "full"
+		? await resolveAutoApplyBody(file, stripFrontmatter(templateContent))
+		: null;
+
+	await app.vault.process(file, data => {
+		if (!hasEmptyBody(data)) return data;
+
+		const currentProps = parseFrontmatterProps(data);
+		const nextProps = mergeSecondOnFirstMap(resolvedProps, currentProps, true);
+
+		// A full apply with no template body is just a property merge: skip the
+		// write when neither side changes.
+		if (areMapsEqual(currentProps, nextProps) && (mode !== "full" || !body)) return data;
+
+		// The body is blank here by definition; `full` replaces it with the
+		// template body, `properties` keeps whatever is there (nothing).
+		return composeFileContent(nextProps, mode === "full" ? body ?? "" : stripFrontmatter(data));
+	});
 }
 
 /**

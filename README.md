@@ -12,7 +12,7 @@ Place a `!Template.md` in a folder. Any note inside that folder (or in one of it
 A template applies to the folder that contains it and to all its descendants, until a nested `!Template.md` takes over. This makes it possible to build progressively more specific schemas while keeping shared properties defined once.
 
 ### Auto-apply on new notes
-When a new untitled note is created, the associated template content is applied automatically, giving each note a coherent starting point.
+When a new note (or a new nested `!Template.md`) is created with an empty body, the associated template's properties are merged in automatically. Optionally the template body is copied too. Files that already carry content, such as notes arriving from sync or import, are left alone. Auto-apply can be turned off in the settings.
 
 ### Template status icon
 While a note is open, the metadata panel shows an icon describing its relation to the associated template:
@@ -22,7 +22,7 @@ While a note is open, the metadata panel shows an icon describing its relation t
 - missing properties required by the template
 
 ### Reconform from template
-A `Reconform from Template` button in the metadata panel merges the template properties into the current note, filling missing defaults while preserving existing values.
+A single button in the metadata panel walks through three steps: Fill (add missing properties), Align (drop extra properties) and Reset (restore the template defaults). Back undoes the last step and rewinds the button. The toolbar can be hidden on notes that have no template.
 
 ### Template scanner
 A scanner that walks the vault and lists every note whose frontmatter is not coherent with its associated template.

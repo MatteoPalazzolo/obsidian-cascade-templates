@@ -1,32 +1,53 @@
 # UX.md
 
-Come si usa il pannello **Properties**. Solo ciò che l'utente vede.
+Come si usa il pannello Properties. Solo ciò che l'utente vede.
 
 ## Indicatore di stato
 
 Un'icona che dice se la nota è allineata al suo template.
-Passandoci sopra il mouse vedi il template di riferimento.
+Passandoci sopra vedi lo stato e il percorso del template di riferimento.
 
 ## Pulsante reconform
 
-Un passo alla volta:
+Tre passi, in ordine:
 
-1. **Fill** — aggiunge le proprietà mancanti.
-2. **Align** — toglie le proprietà in più.
-3. **Reset** — riporta le proprietà ai valori del template.
+1. Fill: aggiunge le proprietà mancanti.
+2. Align: toglie le proprietà in più.
+3. Reset: riporta le proprietà ai valori del template.
 
-- Dopo ogni click passa al passo successivo; dopo **Reset** si spegne, e si riattiva premendo **Back**.
-- Se il click non cambierebbe nulla, il pulsante si vede più chiaro.
-- Se la nota non ha un template, il pulsante non è disponibile.
+Dopo ogni click passa al passo successivo; dopo Reset si spegne e si riattiva con Back.
+Se il click non cambierebbe nulla, il pulsante si vede più chiaro.
+Se la nota non ha un template, il pulsante non è disponibile.
 
 ## Pulsante Back
 
 Annulla l'ultimo click e torna al passo precedente.
-È spento quando non c'è nulla da annullare e si è alla fase di Fill (prima fase).
+È spento quando non c'è nulla da annullare.
+
+## Nuove note e nuovi template
+
+Con Apply the template to new files attivo, un file creato da Obsidian riceve le proprietà del
+template più vicino. Con Properties and body riceve anche il corpo del template.
+I valori già presenti non vengono sovrascritti.
+Vale anche per un nuovo !Template.md, che eredita dal template della cartella superiore.
+Le note che arrivano da sync o import con del contenuto non vengono toccate.
+
+## Visibilità del pannello
+
+Show the properties toolbar:
+
+- Always: sempre visibile, anche quando non c'è un template.
+- Only when a template applies: nascosto sulle note fuori dalla cascata.
+
+## Templater
+
+Se in Templater è attivo il trigger alla creazione dei file, Templater valuta le espressioni <% %>
+anche nei file !Template.md, quindi i template non restano grezzi.
+Disattiva quel trigger se vuoi conservare le espressioni nei template.
 
 ## Da sapere
 
-- Se modifichi le proprietà a mano, il pulsante riparte da **Fill**.
+- Se modifichi le proprietà a mano, il pulsante riparte da Fill.
 - Ogni azione vale solo per la nota su cui la fai: nessun effetto sulle altre.
 
-> Il pulsante **Add property** accanto è quello nativo di Obsidian.
+Il pulsante Add property accanto è quello nativo di Obsidian.
