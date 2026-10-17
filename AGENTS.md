@@ -2,12 +2,13 @@
 
 ## Project
 Obsidian plugin "Cascade Templates" (`manifest.json` id `cascade-templates`).
-TypeScript source bundled by esbuild into `main.js`. Single package, no test suite.
+TypeScript source bundled by esbuild into `main.js`. Single package, plus a pure-core test suite.
 
 ## Commands
 - `npm install` first.
 - `npm run dev` - esbuild watch only. DOES NOT typecheck.
 - `npm run build` - `tsc -noEmit -skipLibCheck` + production bundle. Only full verification; run before finishing.
+- `npm test` - pure-core tests (`tsc -p tsconfig.test.json` + `node --test test/*.test.cjs`).
 - Typecheck only: `npx tsc -noEmit -skipLibCheck`.
 - Lint (no npm script): `npx eslint .` (config `.eslintrc`, ignores `main.js`).
 - Release: `npm version <patch|minor|major>` runs `version-bump.mjs`, syncing `manifest.json` + `versions.json`; tags have no `v` prefix (`.npmrc`).
@@ -17,7 +18,7 @@ TypeScript source bundled by esbuild into `main.js`. Single package, no test sui
 - `main.js` is a generated, gitignored bundle. Never edit it; rebuild instead.
 - New/changed files must be LF (`.editorconfig` `end_of_line = lf`).
 - Ti trovi all'interno di una sandbox che gira su WSL con il progetto condiviso in un mount da una cartella di windows, tienine conto.
-- Templater with `trigger_on_file_creation` on evaluates `<% … %>` in every new `.md` file under 100 KB, including `!Template.md` (its `on_file_creation` falls into an unconditional overwrite branch). Templates are only safe inside Templater's own `templates_folder`; our bridge cannot prevent that write.
+- Templater with `trigger_on_file_creation` on evaluates `<% … %>` in every new `.md` file under 100 KB, including `!Template.md` (its `on_file_creation` falls into an unconditional overwrite branch). Templates are only safe inside Templater's own `templates_folder`; our bridge cannot prevent that write. Its pass rewrites brand-new empty files at ~300 ms, hence auto-apply settles at 600 ms.
 
 ## Architecture
 - `main.ts` - plugin entry (`onload`/`onunload`); wire modules here (settings → core → UI).
@@ -28,12 +29,12 @@ TypeScript source bundled by esbuild into `main.js`. Single package, no test sui
 - `src/core/reconformHistory.ts` - per-`MarkdownView` undo stack (snapshot before each action).
 - `src/core/templaterBridge.ts` - optional runtime bridge to Templater (opt-in, notes only).
 - `src/features/metadataPanel.ts` - per-view metadata panel toolbar (status / reconform / undo).
-- `src/scanner/` - vault-wide scanner (`TemplateScannerModal`, `ScannerABC` subclasses): notes vs template and template vs parent, cache-only, scope from settings.
+- `src/scanner/` - vault-wide scanner modules (`TemplateScannerModal`, `ScannerABC` subclasses): notes vs template and template vs parent, cache-only, scope from settings. Not imported by the plugin in 1.0.0, so it is not bundled.
 - `src/conts.ts` - static defaults only (`DEFAULT_TEMPLATE_BASENAME = "!Template"`).
 
 ## Domain rules
 - A note inherits the nearest ancestor `!Template.md` walking up its folder chain; nested templates override.
-- Auto-apply (D1) applies the nearest template to newly created `.md` files that still have an empty body after a 300 ms settle, once `workspace.layoutReady` is true. The trigger is name-agnostic and view-agnostic (works for Bases row edits); templates inherit from their parent too. Synced/imported notes that already carry content are skipped.
+- Auto-apply (D1) applies the nearest template to newly created `.md` files that still have an empty body after a 600 ms settle, once `workspace.layoutReady` is true. The trigger is name-agnostic and view-agnostic (works for Bases row edits); templates inherit from their parent too. Synced/imported notes that already carry content are skipped.
 - Frontmatter key order is preserved (`yaml` package).
 - Obsidian injects `position` into cached frontmatter; ignore it when comparing/merging.
 - The scanner is read-only: it inspects `metadataCache` and opens files, never writes. Its scope comes from `scannerExcludeFolders` / `scannerTargets`.

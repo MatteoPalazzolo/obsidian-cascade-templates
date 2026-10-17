@@ -45,16 +45,6 @@ Se in Templater è attivo il trigger alla creazione dei file, Templater valuta l
 anche nei file !Template.md, quindi i template non restano grezzi.
 Disattiva quel trigger se vuoi conservare le espressioni nei template.
 
-## Scanner
-
-Il Template Scanner elenca:
-
-- note non allineate al proprio template;
-- template a cui mancano proprietà del template superiore.
-
-Click su un nome apre il file. Nelle impostazioni puoi escludere cartelle e scegliere se
-scansionare note, template o entrambi.
-
 ## Da sapere
 
 - Se modifichi le proprietà a mano, il pulsante riparte da Fill.

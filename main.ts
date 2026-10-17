@@ -9,13 +9,11 @@ import {
 	registerHistoryLifecycle,
 } from 'src/core/reconformHistory';
 import * as MetadataPanel from 'src/features/metadataPanel';
-import { TemplateScannerModal } from 'src/scanner/TemplateScannerModal';
 import {
 	CascadeTemplatesSettingTab,
 	initSettings,
 	onSettingsChange,
 } from 'src/settings';
-import { resolvableIcon } from 'src/utils/icons';
 
 
 export default class extends Plugin {
@@ -38,8 +36,6 @@ export default class extends Plugin {
 		// Debounced because the text field fires on every keystroke.
 		const refreshPanels = debounce(() => MetadataPanel.refreshAll(), 200, true);
 		this.register(onSettingsChange(() => refreshPanels()));
-
-		this.addRibbonIcon(resolvableIcon('scan-eye', 'search'), 'Template Scanner', () => new TemplateScannerModal(this.app).open());
 
 		this.app.workspace.onLayoutReady(() => {
 			registerTemplatezListener();

@@ -1,14 +1,23 @@
 import {MarkdownView, Plugin, TAbstractFile, TFile} from "obsidian";
 import {isMap, isPair, isScalar, parseDocument, Document as Doc} from 'yaml';
 import {getSettings, getTemplateFilename, isTemplateFile} from "../settings";
-import {difference, isSubsetOf} from "./setOperations";
 import {areMapsEqual, mergeSecondOnFirstMap} from "./mapOperations";
+import {
+	computeReconformProps,
+	computeTemplateConformance,
+	type ReconformMode,
+} from "./conformance";
 import {
 	evaluateTemplaterContent,
 	evaluateTemplaterValue,
 	hasTemplaterSyntax,
 	isTemplaterAvailable,
 } from "./templaterBridge";
+
+// AI: pure computations live in `./conformance`; re-exported for the panel and
+// the scanner, which historically imported them from this module.
+export { computeReconformProps, computeTemplateConformance } from "./conformance";
+export type { ReconformMode } from "./conformance";
 
 let ctx: Plugin | undefined;
 
@@ -30,11 +39,13 @@ function getCtx(): Plugin {
  * AI: D1 — how long to wait before inspecting a newly created file.
  *
  * Obsidian writes an empty file first and the creator may fill it right after
- * (Templater, "new note from template", another plugin). 300 ms is the same
- * settle time Templater uses, and it also leaves room for the Base row editor
- * to write its initial frontmatter.
+ * (Templater, "new note from template", another plugin). 600 ms leaves room for
+ * Templater's own on-create pass (300 ms plus parsing): at 300 ms the two
+ * timers tied and Templater's late write could wipe the properties we had just
+ * merged. The delay also leaves room for a Base row editor to write its initial
+ * frontmatter.
  */
-const AUTO_APPLY_SETTLE_MS = 300;
+const AUTO_APPLY_SETTLE_MS = 600;
 
 /** AI: Auto-apply timers still pending, cleared on unload (non-invasive). */
 const pendingAutoApply = new Set<number>();
@@ -259,43 +270,11 @@ function stripFrontmatter(content: string): string {
 }
 
 /**
- * AI: Single entry point for the metadata panel's reconform actions.
- *
- * Role in the architecture:
- * The UI exposes one dynamic button that advances along three phases; instead
- * of duplicating the merge logic in the feature layer, each phase maps to a
- * `mode` here:
- *   - `add-missing`    → Conform: template defaults + existing file values + extras.
- *   - `remove-extra`   → Align:   only the template keys, keeping shared values.
- *   - `reset-defaults` → Clear:   exactly the template defaults (overwrites values).
+ * AI: Applies one reconform phase to a file on disk.
  *
  * Returns `true` only when the file actually changed, so the caller can decide
  * whether to refresh the panel (and whether to push a Back snapshot).
  */
-export type ReconformMode = 'add-missing' | 'remove-extra' | 'reset-defaults';
-
-/**
- * AI: Pure computation of the frontmatter a reconform phase would produce.
- *
- * Shared by `reconformFile` (which writes the result) and by the metadata panel
- * (H4), which uses it to detect whether the current phase is a no-op without
- * touching the file. Keeping the merge in one place guarantees they agree.
- */
-export function computeReconformProps(
-	templateProps: Map<string, any>,
-	currentProps: Map<string, any>,
-	mode: ReconformMode
-): Map<string, any> {
-	switch (mode) {
-		case 'add-missing':
-			return mergeSecondOnFirstMap(templateProps, currentProps, true);
-		case 'remove-extra':
-			return mergeSecondOnFirstMap(templateProps, currentProps, false);
-		case 'reset-defaults':
-			return new Map(templateProps);
-	}
-}
-
 export async function reconformFile(file: TFile | undefined, mode: ReconformMode): Promise<boolean> {
 	if (!file) return false;
 
@@ -430,33 +409,9 @@ async function autoApplyTemplateToNewFile(file: TFile): Promise<void> {
 }
 
 /**
- * AI: Pure template-vs-parent conformance, shared by
- * `isTemplateCoherentToParentTemplate` (disk reads) and the metadata panel
- * (H4), which needs the raw maps anyway to classify a phase as no-op.
- *
- * A template is valid when it includes every property of its parent
- * (neededProps empty); extraProps reports the properties it adds on its own.
+ * AI: Template-vs-parent conformance now lives in `./conformance`; the disk
+ * wrapper stays here because it resolves the parent template.
  */
-export function computeTemplateConformance(
-	templateProps: Map<string, any>,
-	parentProps: Map<string, any>
-): { isValid: boolean, neededProps: Set<string>, extraProps: Set<string> } {
-
-	const templatePropsSet = new Set(templateProps.keys());
-	const parentPropsSet = new Set(parentProps.keys());
-
-	// Rimuove 'position' che è una chiave inserita automaticamente da Obsidian nella cache
-	templatePropsSet.delete('position');
-	parentPropsSet.delete('position');
-
-	// AI: pure helpers instead of the TC39 Set methods (see setOperations.ts).
-	return {
-		isValid: isSubsetOf(parentPropsSet, templatePropsSet),
-		neededProps: difference(parentPropsSet, templatePropsSet),
-		extraProps: difference(templatePropsSet, parentPropsSet),
-	};
-}
-
 export async function isTemplateCoherentToParentTemplate(
 	templateFile: TFile
 ): Promise<{ isValid: boolean, neededProps: Set<string>, extraProps: Set<string> }> {

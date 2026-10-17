@@ -74,7 +74,7 @@ Dettagli:
 ## 9. Auto-apply (D1)
 
 - Tre modalità: `off`, `properties` (default), `full`.
-- Trigger indipendente dalla lingua e dalla view: `create` di un `.md` con body vuoto dopo 300 ms, solo a `workspace.layoutReady`; niente nome `Untitled`, niente `file-open` (funziona anche con le righe create/editate dentro una Base).
+- Trigger indipendente dalla lingua e dalla view: `create` di un `.md` con body vuoto dopo 600 ms, solo a `workspace.layoutReady`; niente nome `Untitled`, niente `file-open` (funziona anche con le righe create/editate dentro una Base). I 600 ms evitano la corsa con il trigger di creazione di Templater, che scrive a 300 ms.
 - Il body è ricontrollato atomicamente dentro `vault.process`: se l'utente ha scritto nel frattempo, l'azione si annulla.
 - Il frontmatter è sempre unito con `add-missing`: i valori esistenti vincono, anche su file creati da una Base.
 - `full` copia anche il body del template. Sui template annidati l'ereditarietà è totale (props + body), ma le espressioni `<% %>` restano raw.
@@ -84,6 +84,8 @@ Dettagli:
 
 ## 10. Scanner (E)
 
+- In 1.0.0 lo scanner non è esposto: nessun ribbon e nessuna sezione nelle impostazioni. I moduli
+  restano in `src/scanner/` e non entrano nel bundle finché `main.ts` non li importa.
 - Una sola Modal (`TemplateScannerModal`) con due scanner: note vs template e template vs parent.
 - Solo `metadataCache`: nessun `vault.read` per file.
 - Scope dalle settings: `scannerExcludeFolders` (match per prefisso, case-insensitive) e

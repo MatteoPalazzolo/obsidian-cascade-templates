@@ -296,41 +296,5 @@ export class CascadeTemplatesSettingTab extends PluginSettingTab {
 				.onChange(async value => {
 					await updateSettings({ panelVisibility: value as PanelVisibility });
 				}));
-
-		new Setting(containerEl).setName("Scanner").setHeading();
-
-		new Setting(containerEl)
-			.setName("Excluded folders")
-			.setDesc("One folder path per line. Files inside these folders are skipped by the scanner.")
-			.addTextArea(text => {
-				text.inputEl.rows = 4;
-				text.setPlaceholder("Archive\nTemplates/Old")
-					.setValue(getSettings().scannerExcludeFolders.join("\n"))
-					.onChange(async value => {
-						await updateSettings({ scannerExcludeFolders: parseFolderList(value) });
-					});
-			});
-
-		new Setting(containerEl)
-			.setName("Scan notes")
-			.setDesc("Compare notes with their nearest template.")
-			.addToggle(toggle => toggle
-				.setValue(getSettings().scannerTargets.notes)
-				.onChange(async value => {
-					await updateSettings({
-						scannerTargets: { ...getSettings().scannerTargets, notes: value },
-					});
-				}));
-
-		new Setting(containerEl)
-			.setName("Scan templates")
-			.setDesc("Compare templates with their parent template.")
-			.addToggle(toggle => toggle
-				.setValue(getSettings().scannerTargets.templates)
-				.onChange(async value => {
-					await updateSettings({
-						scannerTargets: { ...getSettings().scannerTargets, templates: value },
-					});
-				}));
 	}
 }

@@ -185,21 +185,22 @@ Per **ogni** view markdown visibile (split pane), riga del pannello Properties:
 ### Sessione D — Settings (parziale)
 
 - **D1a** auto-apply con `autoApply` (`off` / `properties` / `full`). Trigger su `create` +
-  `layoutReady` + 300 ms + body vuoto, ricontrollato dentro `vault.process`; niente `Untitled`,
+  `layoutReady` + 600 ms + body vuoto, ricontrollato dentro `vault.process`; niente `Untitled`,
   niente `file-open`. Template annidati ereditano dal parent (props e, in `full`, body); Templater
   solo sulle note.
 - **D1b** `panelVisibility` (`always` / `onlyWithTemplate`) con toolbar nascosta via CSS quando non
   c'è un template.
 - **D1c** Impostazioni scanner: `scannerExcludeFolders` (una cartella per riga, prefisso) e
-  `scannerTargets` (note/template).
+  `scannerTargets` (note/template). *Campi e codice conservati, ma la UI è nascosta in 1.0.0.*
 
-### Sessione E — Scanner (parziale)
+### Sessione E — Scanner (parziale, non esposta in 1.0.0)
 
 - **E1** scansione senza `vault.read`: tutto su `metadataCache` (chiude il Rischio 3).
 - **E3** `TemplateCoherenceScanner`: template vs parent, segnala le proprietà mancanti.
 - **E4** scope dalle settings, esclusioni e stringhe inglesi; modal con conteggio file e stato
   vuoto "No issues found".
-- Restano E2 (autofix) e la rifinitura UX del modal.
+- Il codice resta in `src/scanner/` ma non è importato dal plugin, quindi non entra nel bundle.
+  Restano E2 (autofix) e la rifinitura UX del modal prima di riattivarlo.
 
 ---
 
@@ -230,7 +231,7 @@ Origine: `NEXT.md`. Atomicità e non invasività invariate.
 - [x] **D1** Settings complete: template filename, Templater toggle, auto-apply, visibilità toolbar,
       scope ed esclusioni dello scanner. Auto-apply/visibilità in D1a/D1b; scanner in E4.
 - [x] **D1a** Auto-apply: `autoApply` con `off` / `properties` (default) / `full`. Trigger
-      `create` + `layoutReady` + 300 ms + body vuoto, ricontrollato atomicamente in `vault.process`.
+      `create` + `layoutReady` + 600 ms + body vuoto, ricontrollato atomicamente in `vault.process`.
       Niente nome `Untitled`, niente `file-open`; i template annidati ereditano dal parent (props e,
       in `full`, body). Templater solo sulle note.
 - [x] **D1b** Visibilità toolbar: `panelVisibility` con `always` (default) / `onlyWithTemplate`;
@@ -241,7 +242,10 @@ Origine: `NEXT.md`. Atomicità e non invasività invariate.
       esistenti restano compatibili (`!Template` + `.md` = `!Template.md`).
 - [x] **D3** Refresh della UI panel/scanner al cambio settings (listener da `onSettingsChange`).
 
-### Sessione E — Scanner (resta Modal)
+### Sessione E — Scanner (resta Modal, non esposta in 1.0.0)
+
+> Codice completo per E1/E3/E4 ma il ribbon e la sezione impostazioni sono stati rimossi per la
+> 1.0.0. Si riattiva reimportando `TemplateScannerModal` in `main.ts` e rimettendo i settings.
 
 - [x] **E1** Performance: operare su `metadataCache`, eliminare `vault.read` per file (chiude il
       Rischio 3).
@@ -254,10 +258,12 @@ Origine: `NEXT.md`. Atomicità e non invasività invariate.
 
 ### Sessione F — Community readiness
 
-- [ ] **F1** Passata finale stringhe in inglese.
-- [ ] **F2** README + screenshot aggiornati.
+- [x] **F1** Passata finale stringhe in inglese: UI del plugin in inglese; i documenti interni
+      (`PROJECT`, `FUTURE`, `UX`) restano in italiano per scelta.
+- [ ] **F2** README aggiornato (installazione e uso); mancano gli screenshot.
 - [ ] **F3** Manifest/release (versioning con `npm version`, tag senza prefisso `v`).
-- [ ] **F4** Test del core puro (`mapOperations`, `setOperations`, conformance, history).
+- [x] **F4** Test del core puro: `setOperations`, `mapOperations` e `conformance` (15 test,
+      `npm test`). History coperta dallo smoke test, non è pura (WeakMap su `MarkdownView` + I/O).
 
 ---
 
@@ -265,6 +271,7 @@ Origine: `NEXT.md`. Atomicità e non invasività invariate.
 
 - Unica verifica completa: `npm run build` (`tsc -noEmit -skipLibCheck` + bundle). In alcuni
   ambienti `node` non è installato e il build va lanciato altrove.
+- Test del core puro: `npm test` (`tsc -p tsconfig.test.json` + `node --test test/*.test.cjs`).
 - `main.js` è un artefatto generato e gitignored: non editarlo mai.
 - I file nuovi/modificati devono essere LF (`.editorconfig`).
 - Versioning Git gestito manualmente dall'utente: non toccare comandi git se non esplicitamente
