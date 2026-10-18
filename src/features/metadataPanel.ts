@@ -1,4 +1,4 @@
-import { MarkdownView, Plugin, TFile, Workspace, debounce } from "obsidian";
+import { MarkdownView, Platform, Plugin, TAbstractFile, TFile, Workspace, WorkspaceLeaf, debounce } from "obsidian";
 import {
 	computeReconformProps,
 	computeTemplateConformance,
@@ -129,6 +129,29 @@ const ADD_BUTTON_CLASS = "cascade-templates-add-button";
 const METADATA_CONTAINER_SELECTOR = ".metadata-container";
 const ADD_BUTTON_SELECTOR = ".metadata-add-button";
 
+/**
+ * AI: Marks a status indicator that has a reference file to navigate to. Only
+ * then is the badge interactive (cursor, hover background, role/tabindex).
+ */
+const STATUS_ACTIONABLE_CLASS = "is-actionable";
+
+/**
+ * AI: Tooltip suffix advertising the status-icon gestures. It only appears on
+ * actionable states, where a reference actually exists. `Ctrl/Cmd` covers both
+ * Windows/Linux and macOS, since the handler accepts `ctrlKey || metaKey`.
+ */
+const STATUS_ACTION_HINT = " · click: reveal · Ctrl/Cmd+click: open · Ctrl/Cmd+Alt+click: new tab";
+
+/**
+ * AI: Minimal shape of the File Explorer view we rely on. `revealInFolder` is
+ * the same internal method Obsidian's own "Reveal file in navigation" uses, but
+ * it is not part of the public typings: we call it through this local interface
+ * and degrade silently if a future release removes or renames it.
+ */
+interface RevealableFileExplorer {
+	revealInFolder?(file: TAbstractFile): void;
+}
+
 /** AI: Status modifier classes, all mutually exclusive. */
 const STATUS_MODS = ["is-ok", "is-extra", "is-missing", "is-none", "is-root"];
 
@@ -156,9 +179,9 @@ const STATUS_NEUTRAL: StatusConfig = { icon: "circle-dashed", label: "No templat
  * `!Template.md` whose ancestors contain no template — not just the one placed
  * in the vault root. Several roots can coexist in different branches.
  *
- * The icon is deliberately structural (`anchor` = the cascade is anchored here)
+ * The icon is deliberately structural (`crown` = the top of the cascade)
  * instead of the neutral dashed circle used for a note with no template, so the
- * two cases are distinguishable at a glance. `anchor` is part of the oldest
+ * two cases are distinguishable at a glance. `crown` is part of the oldest
  * Lucide subset, so it survives the icon-set drift handled by `setIconSafe`.
  */
 const STATUS_ROOT: StatusConfig = { icon: "crown", label: "Local root of template cascade — no parent template", mod: "root" };
@@ -352,6 +375,8 @@ function createPanel(view: MarkdownView): PanelUI {
 
 	reconform.el.addEventListener("click", (event) => void handleReconformClick(event, ui));
 	backBtn.el.addEventListener("click", (event) => void handleBackClick(event, ui));
+	statusEl.addEventListener("click", (event) => handleStatusClick(event, ui));
+	statusEl.addEventListener("keydown", (event) => handleStatusKeydown(event, ui));
 
 	panels.set(view, ui);
 	return ui;
@@ -559,10 +584,120 @@ function setStatus(ui: PanelUI, config: StatusConfig, referencePath?: string): v
 	ui.statusEl.classList.remove(...STATUS_MODS);
 	ui.statusEl.classList.add(`is-${config.mod}`);
 
+	// AI: only a status that points at a reference file can navigate. Root and
+	// neutral states have no target, so they stay informative and inert: no
+	// pointer cursor, no hover, no tab stop (the role/aria-disabled pair is kept
+	// coherent with that).
+	const actionable = !!referencePath;
+	ui.statusEl.classList.toggle(STATUS_ACTIONABLE_CLASS, actionable);
+	ui.statusEl.setAttribute("aria-disabled", String(!actionable));
+	if (actionable) {
+		ui.statusEl.setAttribute("role", "button");
+		ui.statusEl.setAttribute("tabindex", "0");
+	} else {
+		ui.statusEl.removeAttribute("role");
+		ui.statusEl.removeAttribute("tabindex");
+	}
+
 	// H3: the indicator tooltip carries the state AND the path of the template it
-	// was compared against (omitted for the neutral "no template" states).
-	const label = referencePath ? `${config.label} — ${referencePath}` : config.label;
+	// was compared against (omitted for the neutral "no template" states). On
+	// actionable states it also advertises the click gestures.
+	const label = referencePath
+		? `${config.label} — ${referencePath}${STATUS_ACTION_HINT}`
+		: config.label;
 	ui.statusEl.setAttribute("aria-label", label);
+}
+
+/**
+ * AI: Status-icon click navigation.
+ *
+ * The badge always points at the REFERENCE it is compared against:
+ * - a note → its nearest ancestor `!Template.md`;
+ * - a template → its parent template.
+ *
+ * Gestures (desktop):
+ * - click           → reveal the reference in the File Explorer;
+ * - Ctrl/Cmd+click  → open the reference in the leaf hosting this panel;
+ * - Ctrl/Cmd+Alt+click → open the reference in a new tab.
+ *
+ * On touch there are no modifiers: a tap only reveals (harmless, reversible);
+ * long-press shortcuts are intentionally deferred to avoid accidental
+ * navigation until the mobile interaction is designed.
+ */
+function handleStatusClick(event: MouseEvent, ui: PanelUI): void {
+	if (event.button !== 0) return;
+	event.preventDefault();
+	event.stopPropagation();
+	void activateStatus(ui, isModPressed(event), event.altKey);
+}
+
+/** AI: Keyboard parity for the status badge: Enter/Space plus the same modifiers. */
+function handleStatusKeydown(event: KeyboardEvent, ui: PanelUI): void {
+	if (event.key !== "Enter" && event.key !== " ") return;
+	event.preventDefault();
+	event.stopPropagation();
+	void activateStatus(ui, isModPressed(event), event.altKey);
+}
+
+/**
+ * AI: Platform-aware "Mod" key. On macOS Ctrl+click is a secondary click (it
+ * opens the context menu), so the native convention is Cmd; elsewhere it is
+ * Ctrl. Accepting both would run our action AND the native context menu on Mac.
+ */
+function isModPressed(event: MouseEvent | KeyboardEvent): boolean {
+	return Platform.isMacOS ? event.metaKey : event.ctrlKey;
+}
+
+/**
+ * AI: Resolves the navigation target AT CLICK TIME instead of caching a `TFile`:
+ * a rename/delete between the last refresh and the click can never leave a
+ * stale reference behind. `getTemplateOfFile` is the same resolver the status
+ * itself uses, so the click can only go where the badge points.
+ */
+async function activateStatus(ui: PanelUI, withModifier: boolean, withAlt: boolean): Promise<void> {
+	if (!ui.statusEl.classList.contains(STATUS_ACTIONABLE_CLASS)) return;
+	if (!workspace) return;
+
+	const target = getTemplateOfFile(ui.view.file ?? undefined);
+	if (!target) return;
+
+	// Ctrl/Cmd+Alt → new tab; Ctrl/Cmd → the pane this panel belongs to; plain
+	// click → reveal without opening.
+	if (withModifier && withAlt) {
+		await workspace.getLeaf("tab").openFile(target);
+		return;
+	}
+	if (withModifier) {
+		await ui.view.leaf.openFile(target);
+		return;
+	}
+
+	await revealInExplorer(target);
+}
+
+/**
+ * AI: Mirrors Obsidian's "Reveal file in navigation".
+ *
+ * The File Explorer view is reused when present; if it is closed, a leaf is
+ * created in the sidebar at click time (an explicit user action, so it stays
+ * non-invasive). `revealLeaf` activates the sidebar tab before `revealInFolder`
+ * expands the ancestors and selects the file. The whole helper is a no-op if
+ * the internal method disappears from a future Obsidian release.
+ */
+async function revealInExplorer(file: TAbstractFile): Promise<void> {
+	if (!workspace) return;
+
+	let leaf: WorkspaceLeaf | null = workspace.getLeavesOfType("file-explorer")[0] ?? null;
+	if (!leaf) {
+		leaf = workspace.getLeftLeaf(true) ?? workspace.getRightLeaf(true);
+		if (!leaf) return;
+		await leaf.setViewState({ type: "file-explorer", active: true });
+	}
+
+	await workspace.revealLeaf(leaf);
+
+	const view = leaf.view as unknown as RevealableFileExplorer;
+	view.revealInFolder?.(file);
 }
 
 /**

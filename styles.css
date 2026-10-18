@@ -108,10 +108,27 @@
     }
 
     /* Root template (no ancestor template): the cascade starts here. It is a
-       VALID terminal state, so it shares the success tone; the dedicated anchor
+       VALID terminal state, so it shares the success tone; the dedicated crown
        icon keeps it distinguishable from the coherent check states. */
     &.is-root {
         color: var(--text-success);
+    }
+
+    /* Clickable reference badge: only states that point at a template can
+       navigate (root/neutral have no target). Hover and focus use native
+       Obsidian variables so light/dark/custom themes stay consistent. */
+    &.is-actionable {
+        cursor: pointer;
+        border-radius: var(--radius-s);
+        transition: background-color 0.15s ease-in-out;
+
+        &:hover {
+            background-color: var(--background-modifier-hover);
+        }
+
+        &:focus-visible {
+            box-shadow: 0 0 0 2px var(--background-modifier-border-focus);
+        }
     }
 
     /* D1 — "only when a template applies": the whole injected toolbar is hidden. */

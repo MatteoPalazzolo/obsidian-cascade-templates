@@ -64,3 +64,7 @@ a facilmente orientarmi con uno sguardo ad alto livello
 - il prodotto deve risultare NON invasivo, non considerare mai soluzioni automatiche di reconfor
 m a cascata se non specificato da una feature gestita dall'UI dello scanner per esempio, le autom
 azioni in una nota devono essere sempre circoscritte alla nota stessa
+
+## Env
+- generalmente aspettati che io abbia eseguito npm run dev da un ambiente windows, il watch si occuperà di fare una build dev a ogni nuova modifica
+- anche se ne hai la possibilità attraverso MCP evita sempre e categoricamente di eseguire comandi sull'host windows per vie traverse, limitati al tuo ambiente a ai tool che ti sono stati dati, senza sfruttare eval o exec che ti dovrebbero servire solo per il test delle feature in real time
