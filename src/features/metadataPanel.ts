@@ -49,8 +49,11 @@ import { setIconSafe } from "../utils/icons";
  * - A NOTE is compared to its nearest ancestor `!Template.md`.
  * - A TEMPLATE is compared to its own nearest ancestor template (parent), via
  *   `computeTemplateConformance`.
- * - A file with no template to compare against gets a neutral indicator and a
- *   disabled reconform button.
+ * - A TEMPLATE with no ancestor template is a "local root": the cascade starts
+ *   there, so it gets a dedicated structural indicator (not the neutral one)
+ *   and a disabled reconform button.
+ * - Any other file with no template to compare against gets a neutral
+ *   indicator and a disabled reconform button.
  */
 
 /**
@@ -127,7 +130,7 @@ const METADATA_CONTAINER_SELECTOR = ".metadata-container";
 const ADD_BUTTON_SELECTOR = ".metadata-add-button";
 
 /** AI: Status modifier classes, all mutually exclusive. */
-const STATUS_MODS = ["is-ok", "is-extra", "is-missing", "is-none"];
+const STATUS_MODS = ["is-ok", "is-extra", "is-missing", "is-none", "is-root"];
 
 /** AI: Visual config of the status indicator for a regular note. */
 const NOTE_STATUS: Record<MapConformanceStatus, StatusConfig> = {
@@ -145,8 +148,20 @@ const TEMPLATE_STATUS = {
 /** AI: Neutral indicator: there is nothing meaningful to compare against. */
 const STATUS_NEUTRAL: StatusConfig = { icon: "circle-dashed", label: "No template found", mod: "none" };
 
-/** AI: Neutral indicator specific to a template with no ancestor template. */
-const STATUS_NO_PARENT: StatusConfig = { icon: "circle-dashed", label: "No parent template", mod: "none" };
+/**
+ * AI: Indicator for a template with no ancestor template ("local root").
+ *
+ * This is NOT a missing reference: it is the top of a cascade. `getTemplateOfFile`
+ * walks the folder chain up to the vault root, so this state covers any
+ * `!Template.md` whose ancestors contain no template — not just the one placed
+ * in the vault root. Several roots can coexist in different branches.
+ *
+ * The icon is deliberately structural (`anchor` = the cascade is anchored here)
+ * instead of the neutral dashed circle used for a note with no template, so the
+ * two cases are distinguishable at a glance. `anchor` is part of the oldest
+ * Lucide subset, so it survives the icon-set drift handled by `setIconSafe`.
+ */
+const STATUS_ROOT: StatusConfig = { icon: "crown", label: "Local root of template cascade — no parent template", mod: "root" };
 
 /**
  * AI: Cursor position of the dynamic reconform button (H1). It is a per-view UI
@@ -219,6 +234,13 @@ export function init(plugin: Plugin): void {
 	plugin.registerEvent(workspace.on("active-leaf-change", () => scheduleSync()));
 	plugin.registerEvent(workspace.on("file-open", () => scheduleSync()));
 	plugin.registerEvent(workspace.on("layout-change", () => scheduleSync()));
+
+	// The reference is resolved by walking the folder chain, so deleting or
+	// renaming a template/folder can turn a nested template into a root (or back)
+	// without any frontmatter change. Neither case emits `metadataCache.changed`,
+	// hence this lightweight resync of the open views only.
+	plugin.registerEvent(plugin.app.vault.on("delete", () => scheduleSync()));
+	plugin.registerEvent(plugin.app.vault.on("rename", () => scheduleSync()));
 
 	// A frontmatter change refreshes the views showing that file, and also the
 	// views whose template is the file that changed.
@@ -454,10 +476,15 @@ async function refreshPanel(ui: PanelUI, fresh = false, contentChanged = false):
 	const isTemplate = isTemplateFile(file);
 	const reference = getTemplateOfFile(file);
 	if (!reference) {
-		setPanelVisible(ui, !hideWithoutTemplate);
-		setStatus(ui, isTemplate ? STATUS_NO_PARENT : STATUS_NEUTRAL);
+		// AI: A template without a parent is a ROOT, not an orphan: it is still
+		// meaningful under "only when a template applies", so the badge stays
+		// visible while the actions remain disabled (there is nothing to compare
+		// against). A note with no template keeps the neutral state and the D1
+		// visibility policy.
+		setPanelVisible(ui, isTemplate || !hideWithoutTemplate);
+		setStatus(ui, isTemplate ? STATUS_ROOT : STATUS_NEUTRAL);
 		setReconformUnavailable(ui, isTemplate
-			? "This template has no parent template"
+			? "This template is the root of its cascade (no parent template)"
 			: "No template applies to this note");
 		updateBackState(ui);
 		return;

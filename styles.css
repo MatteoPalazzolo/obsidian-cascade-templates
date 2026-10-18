@@ -107,6 +107,13 @@
         color: var(--text-faint);
     }
 
+    /* Root template (no ancestor template): the cascade starts here. It is a
+       VALID terminal state, so it shares the success tone; the dedicated anchor
+       icon keeps it distinguishable from the coherent check states. */
+    &.is-root {
+        color: var(--text-success);
+    }
+
     /* D1 — "only when a template applies": the whole injected toolbar is hidden. */
     &.cascade-templates-hidden {
         display: none;

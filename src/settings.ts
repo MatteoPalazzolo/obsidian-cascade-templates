@@ -86,8 +86,8 @@ export interface CascadeTemplatesSettings {
 /** AI: Fallbacks applied on top of whatever `data.json` contains. */
 export const DEFAULT_SETTINGS: CascadeTemplatesSettings = {
 	templateBasename: DEFAULT_TEMPLATE_BASENAME,
-	evaluateTemplaterInNotes: false,
-	autoApply: "properties",
+	evaluateTemplaterInNotes: true,
+	autoApply: "full",
 	panelVisibility: "always",
 	scannerExcludeFolders: [],
 	scannerTargets: { notes: true, templates: true },
