@@ -12,6 +12,7 @@ import { areMapsEqual, computeMapConformance, type MapConformanceStatus } from "
 import { back, clear as clearHistory, hasHistory, onHistoryChange, push } from "../core/reconformHistory";
 import { hasTemplaterSyntax } from "../core/templaterBridge";
 import { getSettings, isTemplateFile } from "../settings";
+import { warnOnce } from "../utils/diagnostics";
 import { setIconSafe } from "../utils/icons";
 
 /**
@@ -44,6 +45,14 @@ import { setIconSafe } from "../utils/icons";
  *         <div class="cascade-templates-action"> back </div>
  *
  * Row layout: [status] [Add property] [reconform] [back].
+ *
+ * Fragile surfaces (not part of the public Obsidian API):
+ * - the `.metadata-*` DOM contract above and the native `text-icon-button`
+ *   classes we borrow: cosmetic or structural, no runtime probe (the panel can
+ *   legitimately be absent, e.g. properties view disabled);
+ * - `FileExplorerView.revealInFolder`, used by the status-icon navigation:
+ *   feature-detected in `revealInExplorer`, which reports the absence once via
+ *   `warnOnce` because there the missing method is a real, actionable defect.
  *
  * Conformance semantics:
  * - A NOTE is compared to its nearest ancestor `!Template.md`.
@@ -146,7 +155,7 @@ const STATUS_ACTION_HINT = " · click: reveal · Ctrl/Cmd+click: open · Ctrl/Cm
  * AI: Minimal shape of the File Explorer view we rely on. `revealInFolder` is
  * the same internal method Obsidian's own "Reveal file in navigation" uses, but
  * it is not part of the public typings: we call it through this local interface
- * and degrade silently if a future release removes or renames it.
+ * and report the capability once via `warnOnce` if it disappears.
  */
 interface RevealableFileExplorer {
 	revealInFolder?(file: TAbstractFile): void;
@@ -243,6 +252,9 @@ const trackedViews = new Set<MarkdownView>();
 /** AI: Workspace handle captured at init time (same pattern as templateAPI). */
 let workspace: Workspace | undefined;
 
+/** AI: Plugin version, attached to capability warnings for bug reports. */
+let pluginVersion = "";
+
 /** AI: Unsubscribe handle of the history listener, released by `clear()`. */
 let unsubscribeHistory: (() => void) | null = null;
 
@@ -252,6 +264,7 @@ let unsubscribeHistory: (() => void) | null = null;
  */
 export function init(plugin: Plugin): void {
 	workspace = plugin.app.workspace;
+	pluginVersion = plugin.manifest.version;
 	const scheduleSync = debounce(() => syncAll(), 40, true);
 
 	plugin.registerEvent(workspace.on("active-leaf-change", () => scheduleSync()));
@@ -681,8 +694,12 @@ async function activateStatus(ui: PanelUI, withModifier: boolean, withAlt: boole
  * The File Explorer view is reused when present; if it is closed, a leaf is
  * created in the sidebar at click time (an explicit user action, so it stays
  * non-invasive). `revealLeaf` activates the sidebar tab before `revealInFolder`
- * expands the ancestors and selects the file. The whole helper is a no-op if
- * the internal method disappears from a future Obsidian release.
+ * expands the ancestors and selects the file.
+ *
+ * `revealInFolder` is internal and untyped: if a future Obsidian release
+ * removes or renames it, the action degrades to a no-op AND reports the missing
+ * capability once (see `warnOnce`), so a silent regression becomes a bug report
+ * with the running Obsidian version attached.
  */
 async function revealInExplorer(file: TAbstractFile): Promise<void> {
 	if (!workspace) return;
@@ -697,7 +714,25 @@ async function revealInExplorer(file: TAbstractFile): Promise<void> {
 	await workspace.revealLeaf(leaf);
 
 	const view = leaf.view as unknown as RevealableFileExplorer;
-	view.revealInFolder?.(file);
+	if (typeof view.revealInFolder !== "function") {
+		warnOnce("file-explorer:revealInFolder", "File Explorer reveal is unavailable", {
+			capability: "revealInFolder",
+			plugin: pluginVersion,
+		});
+		return;
+	}
+
+	try {
+		view.revealInFolder(file);
+	} catch (error) {
+		// Availability is not correctness: the method can exist and still fail
+		// (e.g. the view is mid-initialization). Keep the UI alive, report once.
+		warnOnce("file-explorer:revealInFolder:error", "File Explorer reveal failed", {
+			capability: "revealInFolder",
+			plugin: pluginVersion,
+			error: error instanceof Error ? error.message : String(error),
+		});
+	}
 }
 
 /**
