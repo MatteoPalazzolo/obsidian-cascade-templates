@@ -92,6 +92,13 @@ export interface PanelUI {
 	reconformWarning: string | null;
 	/** AI: Back button (C4/H2): reverses the last reconform press. */
 	backEl: HTMLDivElement;
+	/**
+	 * AI: The native "Add property" button currently attached. Its CSS is
+	 * overridden to blend with our toolbar (styles.css), but only while the
+	 * toolbar is visible: under "only when a template applies" a bare native
+	 * button must keep Obsidian's own look.
+	 */
+	addButtonEl: HTMLElement | null;
 	/** AI: Re-attaches the elements after a panel re-render. */
 	observer: MutationObserver | null;
 	/** AI: The container currently observed (to detect container replacement). */
@@ -110,6 +117,12 @@ const RECONFORM_CLASS = "cascade-templates-reconform";
 const BACK_CLASS = "cascade-templates-back";
 /** AI: D1 — hides the toolbar when the "only when a template applies" policy is on. */
 const HIDDEN_CLASS = "cascade-templates-hidden";
+/**
+ * AI: Marker applied to the NATIVE "Add property" button only while our toolbar
+ * is visible. It gates the CSS that makes the native button share our bar; when
+ * the toolbar is hidden the marker is absent and the button stays untouched.
+ */
+const ADD_BUTTON_CLASS = "cascade-templates-add-button";
 const METADATA_CONTAINER_SELECTOR = ".metadata-container";
 const ADD_BUTTON_SELECTOR = ".metadata-add-button";
 
@@ -310,6 +323,7 @@ function createPanel(view: MarkdownView): PanelUI {
 		phase: 0,
 		phaseFile: null,
 		backEl: backBtn.el,
+		addButtonEl: null,
 		observer: null,
 		observedContainer: null,
 	};
@@ -364,6 +378,12 @@ function attach(ui: PanelUI, addButton: HTMLElement): void {
 	if (ui.actionsEl.previousElementSibling !== addButton) {
 		addButton.after(ui.actionsEl);
 	}
+
+	// AI: D1 — the native button gets our styling only while the toolbar is
+	// visible. Re-applied here because Obsidian may replace the button node on
+	// re-render without triggering a full refresh.
+	ui.addButtonEl = addButton;
+	addButton.classList.toggle(ADD_BUTTON_CLASS, !ui.actionsEl.classList.contains(HIDDEN_CLASS));
 }
 
 /**
@@ -499,6 +519,10 @@ function templaterWarning(templateProps: Map<string, any>): string | null {
 function setPanelVisible(ui: PanelUI, visible: boolean): void {
 	ui.statusEl.classList.toggle(HIDDEN_CLASS, !visible);
 	ui.actionsEl.classList.toggle(HIDDEN_CLASS, !visible);
+	// AI: D1 — the native "Add property" keeps Obsidian's default styling when
+	// the toolbar is hidden, so "only when a template applies" is invisible
+	// rather than a half-applied restyle.
+	ui.addButtonEl?.classList.toggle(ADD_BUTTON_CLASS, visible);
 }
 
 /** AI: Applies a status indicator configuration, with the reference path (H3). */
@@ -715,6 +739,8 @@ function detach(view: MarkdownView): void {
 	if (!ui) return;
 
 	ui.observer?.disconnect();
+	ui.addButtonEl?.classList.remove(ADD_BUTTON_CLASS);
+	ui.addButtonEl = null;
 	ui.statusEl.remove();
 	ui.actionsEl.remove();
 	panels.delete(view);

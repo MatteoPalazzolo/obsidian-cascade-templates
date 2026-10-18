@@ -85,6 +85,11 @@
     margin-left: var(--size-2-2);
     margin-right: 0;
 
+    transform: scale(1.05);
+    &.is-missing {
+        transform: scale(1.12);
+    }
+
     /* status modifier emitted by metadataPanel.ts (one at a time) */
     &.is-ok {
         color: var(--text-success);
@@ -198,15 +203,18 @@
     }
 }
 
-/* fix obsidian's "+ Add property" */
-.metadata-add-button.text-icon-button {
-    margin-left: 8px;
+/* AI: fix Obsidian's "+ Add property" so it visually joins our toolbar.
+   D1 — the `.cascade-templates-add-button` marker is set by metadataPanel.ts
+   only while the toolbar is actually visible: under "Only when a template
+   applies" a note without a template keeps the native button untouched. */
+.metadata-add-button.text-icon-button.cascade-templates-add-button {
+    margin-left: var(--size-4-2);
     padding-left: 3px;
     font-family: monospace;
-    border-bottom: 2px solid #333;
+    border-bottom: 2px solid var(--background-modifier-border, #333);
     border-bottom-left-radius: 0;
     border-bottom-right-radius: 0;
     &:hover {
-        border-color: #444;
+        border-color: var(--background-modifier-border-hover, #444);
     }
 }
