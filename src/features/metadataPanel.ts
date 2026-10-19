@@ -409,6 +409,10 @@ function createActionButton(icon: string, label: string, flipped=false): {
 	el.classList.add(ACTION_CLASS, "text-icon-button");
 	el.setAttribute("role", "button");
 	el.setAttribute("tabindex", "0");
+	// AI: the visual label can be hidden on phones (compact toolbar), so the
+	// accessible name must not depend on it. The reconform button later replaces
+	// this value with its phase-specific tooltip in `renderReconform`.
+	el.setAttribute("aria-label", label);
 
 	const iconEl = document.createElement("span");
 	iconEl.classList.add("text-button-icon");

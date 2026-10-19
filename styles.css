@@ -122,8 +122,12 @@
         border-radius: var(--radius-s);
         transition: background-color 0.15s ease-in-out;
 
-        &:hover {
-            background-color: var(--background-modifier-hover);
+        /* AI: touch devices report hover after a tap (the style sticks). Only
+           real hover-capable pointers get the background. */
+        @media (hover: hover) {
+            &:hover {
+                background-color: var(--background-modifier-hover);
+            }
         }
 
         &:focus-visible {
@@ -150,8 +154,11 @@
         display: none;
     }
 
-    &:hover {
-        border-color: #444;
+    /* AI: see the status hover note: no sticky hover on touch. */
+    @media (hover: hover) {
+        &:hover {
+            border-color: #444;
+        }
     }
 
 }
@@ -238,7 +245,27 @@
     border-bottom: 2px solid var(--background-modifier-border, #333);
     border-bottom-left-radius: 0;
     border-bottom-right-radius: 0;
-    &:hover {
-        border-color: var(--background-modifier-border-hover, #444);
+    /* AI: see the status hover note: no sticky hover on touch. */
+    @media (hover: hover) {
+        &:hover {
+            border-color: var(--background-modifier-border-hover, #444);
+        }
     }
+}
+
+/* AI: compact toolbar on phones.
+   Obsidian marks the phone UI with `is-phone` on the body: it is the phone
+   environment marker, more accurate than a viewport media query (a desktop pane
+   can be just as narrow, but it is not a phone). The injected toolbar shares
+   the row with the native "Add property" button; on a phone the Back label is
+   redundant (the undo arrow is unambiguous), so hiding it recovers the space
+   needed to keep the row together. The accessible name is preserved by the
+   `aria-label` set in `createActionButton`. */
+body.is-phone .cascade-templates-back > .text-button-label {
+    display: none;
+}
+
+body.is-phone .cascade-templates-action {
+    padding-inline: var(--size-2-2);
+    gap: var(--size-2-1);
 }
