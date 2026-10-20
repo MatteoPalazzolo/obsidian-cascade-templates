@@ -4,7 +4,7 @@
 	"version": "1.0.0",
 	"minAppVersion": "1.5.0",
 	"description": "A modular cascading templating system based on folder-level !Template.md files.",
-	"author": "palazz",
+	"author": "Matteo Palazzolo",
 	"authorUrl": "https://github.com/MatteoPalazzolo",
 	"isDesktopOnly": false
 }
