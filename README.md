@@ -47,8 +47,8 @@ Objects/Items/!Template.md
 ```
 ---
 damage:
-price:
 rarity:
+price:
 range:
 material:
 infusions:
@@ -73,7 +73,7 @@ level:
 # Description
 Insert spell description
 ```
-Now you can have your common properties shared between Items and Spells with zero to no setup and no settings tab configs!!!
+Now you can have your common properties shared between Items and Spells with zero to no setup, and and without opening the settings for every new folder!!!
 
 Objects/Items/Sword.md
 
@@ -111,19 +111,25 @@ A spell for no common mortal (or something)
 
 The other features of the plugin are releated to make as easy as possible to reconform your current note or template to the parent, using a status icon to signal conformance and the addition of a multi-step button to the properties toolbar to force allignement to template changes.
 
-## Screens
+## Screenshohts
 
 ![](assets/screen-01.png)
+
 ![](assets/screen-02.png)
+
 ![](assets/screen-03.png)
+
 ![](assets/screen-04.png)
+
 ![](assets/screen-05.png)
+
 ![](assets/screen-06.png)
+
 ![](assets/screen-07.png)
 
 ## Notes
 
-No edit will ever be done without explicit user interaction, conformance is a suggestion and is not granted in any way if the user does not perform explicit action.
+No edit to existing notes will ever be done automatically: conformance is only a suggestion and is not granted in any way unless you perform actions explicitly, such as pressing a button.
 
 "Update" will always adjust the props order to match the template ones.
 
