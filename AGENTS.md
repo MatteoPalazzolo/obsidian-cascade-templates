@@ -4,6 +4,8 @@
 Obsidian plugin "Cascade Templates" (`manifest.json` id `cascade-templates`).
 TypeScript source bundled by esbuild into `main.js`. Single package, plus a pure-core test suite.
 
+Riferimento di progetto: `PROJECT.md` (dominio, UI, auto-apply, scanner, stato e mappa dei moduli). `README.md` è la documentazione utente. Leggi `PROJECT.md` prima di modificare il comportamento del plugin.
+
 ## Commands
 - `npm install` first.
 - `npm run dev` - esbuild watch only. DOES NOT typecheck.
@@ -20,30 +22,11 @@ TypeScript source bundled by esbuild into `main.js`. Single package, plus a pure
 - Ti trovi all'interno di una sandbox che gira su WSL con il progetto condiviso in un mount da una cartella di windows, tienine conto.
 - Templater with `trigger_on_file_creation` on evaluates `<% … %>` in every new `.md` file under 100 KB, including `!Template.md` (its `on_file_creation` falls into an unconditional overwrite branch). Templates are only safe inside Templater's own `templates_folder`; our bridge cannot prevent that write. Its pass rewrites brand-new empty files at ~300 ms, hence auto-apply settles at 600 ms.
 
-## Architecture
-- `main.ts` - plugin entry (`onload`/`onunload`); wire modules here (settings → core → UI).
-- `src/settings.ts` - user settings + persistence + `PluginSettingTab`; exposes `getTemplateFilename()` / `isTemplateFile()`.
-- `src/core/templateAPI.ts` - template resolution + frontmatter read/write + `reconformFile` + auto-apply. Module-level plugin context: `init(this)` in onload, then use `getCtx().app` inside these functions, never `this.app`.
-- `src/core/mapOperations.ts` - property merge + conformance (`ok`/`extra`/`missing`).
-- `src/core/setOperations.ts` - pure Set helpers (mobile-safe replacement of the TC39 Set methods).
-- `src/core/reconformHistory.ts` - per-`MarkdownView` undo stack (snapshot before each action).
-- `src/core/templaterBridge.ts` - optional runtime bridge to Templater (opt-in, notes only); also exposes availability/version for the settings status.
-- `src/features/metadataPanel.ts` - per-view metadata panel toolbar (status / reconform / undo).
-- `src/scanner/` - vault-wide scanner modules (`TemplateScannerModal`, `ScannerABC` subclasses): notes vs template and template vs parent, cache-only, scope from settings. Not imported by the plugin in 1.0.0, so it is not bundled.
-- `src/conts.ts` - static defaults only (`DEFAULT_TEMPLATE_BASENAME = "!Template"`).
-
-## Domain rules
-- A note inherits the nearest ancestor `!Template.md` walking up its folder chain; nested templates override.
-- Auto-apply (D1) applies the nearest template to newly created `.md` files that still have an empty body after a 600 ms settle, once `workspace.layoutReady` is true. The trigger is name-agnostic and view-agnostic (works for Bases row edits); templates inherit from their parent too. Synced/imported notes that already carry content are skipped.
-- Frontmatter key order is preserved (`yaml` package).
-- Obsidian injects `position` into cached frontmatter; ignore it when comparing/merging.
-- The scanner is read-only: it inspects `metadataCache` and opens files, never writes. Its scope comes from `scannerExcludeFolders` / `scannerTargets`.
-
 ## Conventions
 - `tsconfig` `baseUrl "."`: `main.ts` imports use `src/...`, files under `src/` use relative imports. Match neighbors.
 - `types/` no longer augments `Set`: TC39 set methods are replaced by `src/core/setOperations.ts`.
 - `styles.css` uses native CSS nesting keyed by modal class (e.g. `.ScannerModal`).
-- Comments/source strings mix Italian and English; do not add comments unless asked.
+- Comments: role-level comments are expected (vedi User Guidelines); sorgenti e stringhe UI in inglese, commenti anche in italiano.
 
 ## Obsidian Guidelines
 - Piattaforme: Assicurati che il plugin funzioni sia su Desktop che su Mobile (iOS e Android), oppure disabilita esplicitamente il supporto mobile nel manifest.json ("isDesktopOnly": true).
@@ -55,15 +38,10 @@ TypeScript source bundled by esbuild into `main.js`. Single package, plus a pure
 ## User Guidelines
 - alla fine dell'implementazione di uno o più punti suggeriscimi sempre cosa scrivere nel git commit che gestirò in autonomia
 - ogni qualvolta che ti chiedo un riferimento al codice ti chiederei di rispondermi con la notazione di vscode del tipo main.ts:42 o src/settings.md:5 ; crea dei link relativi all'interno di workspace/ e non menzionare workspace nei link stesso
-- considera NEXT.md readonly con delle mie considerazioni a caldo non strutturate a cui attingere a inizio sessione
+- se è presente NEXT.md, consideralo readonly: sono considerazioni a caldo non strutturate a cui attingere a inizio sessione
 - non toccare mai comandi di github in scrittura, ho disabilitato la scrittura nella cartella .git, ogni tentativo sarà negato, voglio avere controllo completo del versioning in autonomia
-- commenta estensivamente sia file che codice descrivendo il ruolo svolto dal rispettivo file o funzione o classe o chi per esso all'interno dell'architettura del programma, in modo che io possa facilmente orientarmi con uno sguardo ad alto livello
-- commenta estensivamente sia file che codice descrivendo il ruolo svolto dal rispettivo file o 
-funzione o classe o chi per esso all'interno dell'architettura del programma, in modo che io poss
-a facilmente orientarmi con uno sguardo ad alto livello
-- il prodotto deve risultare NON invasivo, non considerare mai soluzioni automatiche di reconfor
-m a cascata se non specificato da una feature gestita dall'UI dello scanner per esempio, le autom
-azioni in una nota devono essere sempre circoscritte alla nota stessa
+- commenta estensivamente sia file che codice descrivendo il ruolo svolto da file, funzioni e classi all'interno dell'architettura, in modo da orientarti con uno sguardo ad alto livello
+- il prodotto deve risultare NON invasivo: nessuna soluzione automatica di reconform a cascata se non specificata da una feature gestita dall'UI (per esempio lo scanner); le automazioni in una nota devono restare circoscritte alla nota stessa
 
 ## Env
 - generalmente aspettati che io abbia eseguito npm run dev da un ambiente windows, il watch si occuperà di fare una build dev a ogni nuova modifica
