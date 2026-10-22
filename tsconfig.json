@@ -1,27 +1,19 @@
 {
 	"compilerOptions": {
-		"typeRoots": ["./types", "./node_modules/@types"],
-		"jsx": "react-jsx",
-		"allowSyntheticDefaultImports": true,
-		"baseUrl": ".",
 		"inlineSourceMap": true,
 		"inlineSources": true,
 		"module": "ESNext",
-		"target": "ES6",
-		"allowJs": true,
-		"noImplicitAny": true,
+		"target": "ES2021",
+		"strict": true,
+		"noImplicitReturns": true,
+		"noFallthroughCasesInSwitch": true,
+		"noUncheckedIndexedAccess": true,
 		"moduleResolution": "node",
-		"importHelpers": true,
 		"isolatedModules": true,
-		"strictNullChecks": true,
-		"lib": [
-			"DOM",
-			"ES5",
-			"ES6",
-			"ES7"
-		]
+		"skipLibCheck": true,
+		"forceConsistentCasingInFileNames": true,
+		"allowSyntheticDefaultImports": true,
+		"lib": ["ES2021", "DOM"],
 	},
-	"include": [
-		"**/*.ts"
-	]
+	"include": ["main.ts", "src/**/*.ts"]
 }
