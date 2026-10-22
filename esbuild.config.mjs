@@ -1,6 +1,11 @@
 import esbuild from "esbuild";
 import process from "process";
-import builtins from "builtin-modules";
+// Native list of Node builtin modules (replaces the `builtin-modules` package).
+// Everything in it is marked as external so that a native import inside src/
+// stays a runtime `require()` instead of breaking the bundle resolution.
+import { builtinModules } from "node:module";
+
+const builtins = builtinModules.filter((mod) => !mod.startsWith("_"));
 
 const banner =
 `/*
