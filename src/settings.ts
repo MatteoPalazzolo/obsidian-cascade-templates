@@ -274,7 +274,7 @@ export class CascadeTemplatesSettingTab extends PluginSettingTab {
 			: "Templater is not installed or not enabled: template expressions are copied verbatim into notes.";
 
 		new Setting(containerEl)
-			.setName("Evaluate Templater scripts in notes")
+			.setName("Evaluate template expressions in notes")
 			.setDesc(templaterDescription)
 			.addToggle(toggle => toggle
 				.setValue(getSettings().evaluateTemplaterInNotes)

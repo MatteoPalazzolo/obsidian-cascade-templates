@@ -6,7 +6,9 @@ export function createElInline<K extends keyof HTMLElementTagNameMap>(
 	content?: string | Node | (string | Node)[],
 	callback?: (el: HTMLElementTagNameMap[K]) => void
 ): HTMLElementTagNameMap[K] {
-	const el = document.createElement(tag);
+	// Obsidian's global `createEl` helper, so the element carries the app's
+	// DOM conventions (and satisfies `obsidianmd/prefer-create-el`).
+	const el = createEl(tag);
 
 	if (className) el.className = className;
 

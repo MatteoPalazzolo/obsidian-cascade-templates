@@ -110,6 +110,9 @@ export function getTemplateOfFile(file: TFile | undefined): TFile | undefined {
 			return templateFile;
 		}
 	}
+
+	// Reached the vault root without a template (`noImplicitReturns`).
+	return undefined;
 }
 
 export function getActiveMarkdownView() {
@@ -128,7 +131,7 @@ export function getActiveMarkdownFile() {
  * cached frontmatter. Callers that compare/merge key sets must ignore it, so
  * prefer `getFilePropsMapFromCache` over using this raw record directly.
  */
-export function getFilePropsFromCache(file: TFile | undefined): Record<string, any> | undefined {
+export function getFilePropsFromCache(file: TFile | undefined): Record<string, unknown> | undefined {
 	if (!file) return;
 	return getCtx().app.metadataCache.getFileCache(file)?.frontmatter;
 }
@@ -142,8 +145,8 @@ export function getFilePropsFromCache(file: TFile | undefined): Record<string, a
  * `getFileProps`, so UI and scanner agree on what "the file's properties" are.
  * The synthetic `position` key added by Obsidian is dropped here.
  */
-export function getFilePropsMapFromCache(file: TFile | undefined): Map<string, any> {
-	const map = new Map<string, any>();
+export function getFilePropsMapFromCache(file: TFile | undefined): Map<string, unknown> {
+	const map = new Map<string, unknown>();
 
 	const props = getFilePropsFromCache(file);
 	if (!props) return map;
@@ -163,8 +166,8 @@ export function getFilePropsMapFromCache(file: TFile | undefined): Map<string, a
  * inspect the exact string it is about to rewrite inside `vault.process`.
  * Only the YAML mapping root is read; any other shape yields an empty Map.
  */
-export function parseFrontmatterProps(content: string): Map<string, any> {
-	const map = new Map<string, any>();
+export function parseFrontmatterProps(content: string): Map<string, unknown> {
+	const map = new Map<string, unknown>();
 	const doc = parseDocument(content);
 	const contents = doc.contents;
 
@@ -178,8 +181,9 @@ export function parseFrontmatterProps(content: string): Map<string, any> {
 		// Keys are stored as scalars; fall back to string coercion for exotic nodes.
 		const key = isScalar(pair.key) ? String(pair.key.value) : String(pair.key);
 
-		// Convert the value node into a native JavaScript value.
-		const value = pair.value ? pair.value.toJSON() : null;
+		// Convert the value node into a native JavaScript value. `toJSON()` is
+		// loose (`any`) by design: frontmatter shapes are user-defined.
+		const value: unknown = pair.value ? pair.value.toJSON() : null;
 
 		// Insert preserving the exact reading order.
 		map.set(key, value);
@@ -195,7 +199,7 @@ export function parseFrontmatterProps(content: string): Map<string, any> {
  * previous duck-typed `'items' in items && Array.isArray(items.items)` check,
  * so non-mapping frontmatter (scalars/sequences) safely yields an empty Map.
  */
-export async function getFileProps(file: TFile | undefined): Promise<Map<string, any>> {
+export async function getFileProps(file: TFile | undefined): Promise<Map<string, unknown>> {
 	if (!file) return new Map();
 	const content = await getCtx().app.vault.read(file);
 	return parseFrontmatterProps(content);
@@ -215,7 +219,7 @@ export async function getFileProps(file: TFile | undefined): Promise<Map<string,
  * the canonical `---` / yaml / `---` block is emitted and the body is appended
  * as-is (a leading blank line after the block is preserved when present).
  */
-export async function setFileProps(file: TFile | undefined, newPropsMap: Map<string, any>): Promise<void> {
+export async function setFileProps(file: TFile | undefined, newPropsMap: Map<string, unknown>): Promise<void> {
 	if (!file) return;
 
 	const rawContent = await getCtx().app.vault.read(file);
@@ -235,7 +239,7 @@ export async function setFileProps(file: TFile | undefined, newPropsMap: Map<str
  * - one leading blank line in the body is normalized away, since the canonical
  *   blank line after the block is added here.
  */
-export function composeFileContent(props: Map<string, any>, body: string): string {
+export function composeFileContent(props: Map<string, unknown>, body: string): string {
 	const doc = new Doc();
 	for (const [key, value] of props.entries()) {
 		doc.set(key, value);
@@ -307,7 +311,7 @@ export async function reconformFile(file: TFile | undefined, mode: ReconformMode
  * available and the value is a string containing `<%`. Every value that cannot
  * be rendered keeps its raw form, so the operation never breaks the note.
  */
-async function resolveTemplaterExpressions(file: TFile, props: Map<string, any>): Promise<Map<string, any>> {
+async function resolveTemplaterExpressions(file: TFile, props: Map<string, unknown>): Promise<Map<string, unknown>> {
 	if (!getSettings().evaluateTemplaterInNotes) return props;
 	if (isTemplateFile(file)) return props;
 
@@ -315,7 +319,7 @@ async function resolveTemplaterExpressions(file: TFile, props: Map<string, any>)
 	if (!isTemplaterAvailable(app)) return props;
 	if (![...props.values()].some(hasTemplaterSyntax)) return props;
 
-	const resolved = new Map<string, any>();
+	const resolved = new Map<string, unknown>();
 	for (const [key, value] of props.entries()) {
 		if (!hasTemplaterSyntax(value)) {
 			resolved.set(key, value);

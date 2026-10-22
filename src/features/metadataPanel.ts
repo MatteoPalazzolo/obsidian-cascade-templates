@@ -98,8 +98,8 @@ export interface PanelUI {
 	 * of the last refresh, so a content change that makes it diverge means the
 	 * note was edited outside the button and the cursor/Back stack must restart.
 	 */
-	reconformCurrent: Map<string, any> | null;
-	reconformReference: Map<string, any> | null;
+	reconformCurrent: Map<string, unknown> | null;
+	reconformReference: Map<string, unknown> | null;
 	/** AI: H3 — G4 Templater warning kept on the reconform tooltip, if any. */
 	reconformWarning: string | null;
 	/** AI: Back button (C4/H2): reverses the last reconform press. */
@@ -213,14 +213,16 @@ type ReconformPhase = 0 | 1 | 2 | 3;
  */
 // UPDATE --> ALIGN --> RESET --> OFF
 // stamp, hammer
-const PHASE_CONFIG: PhaseConfig[] = [
+// A tuple (not `PhaseConfig[]`) keeps literal indexing type-safe under
+// `noUncheckedIndexedAccess`: `PHASE_CONFIG[0]` is never `PhaseConfig | undefined`.
+const PHASE_CONFIG: readonly [PhaseConfig, PhaseConfig, PhaseConfig] = [
 	{ mode: "add-missing", icon: "wrench", label: "Update", action: "add the missing properties" },
 	{ mode: "remove-extra", icon: "anvil", label: "Align", action: "remove the extra properties" },
 	{ mode: "reset-defaults", icon: "brush-cleaning", label: "Reset", action: "reset the properties to defaults" },
 ];
 
 /** AI: End of the sequence; the cursor clamps here and stays idle. */
-const PHASE_DONE = PHASE_CONFIG.length as ReconformPhase;
+const PHASE_DONE: ReconformPhase = PHASE_CONFIG.length;
 
 /** AI: Status indicator description. */
 interface StatusConfig {
@@ -354,11 +356,9 @@ function syncView(view: MarkdownView): void {
 
 /** AI: Creates the elements of a view's toolbar and registers them. */
 function createPanel(view: MarkdownView): PanelUI {
-	const statusEl = document.createElement("span");
-	statusEl.classList.add(STATUS_CLASS);
+	const statusEl = createSpan({ cls: STATUS_CLASS });
 
-	const actionsEl = document.createElement("div");
-	actionsEl.classList.add(TOOLBAR_CLASS);
+	const actionsEl = createDiv({ cls: TOOLBAR_CLASS });
 
 	const reconform = createActionButton("list-restart", "Reconform");
 	reconform.el.classList.add(RECONFORM_CLASS);
@@ -405,8 +405,8 @@ function createActionButton(icon: string, label: string, flipped=false): {
 	iconEl: HTMLElement;
 	labelEl: HTMLElement;
 } {
-	const el = document.createElement("div");
-	el.classList.add(ACTION_CLASS, "text-icon-button");
+	// Native look: `text-icon-button` + `text-button-icon`/`text-button-label`.
+	const el = createDiv({ cls: `${ACTION_CLASS} text-icon-button` });
 	el.setAttribute("role", "button");
 	el.setAttribute("tabindex", "0");
 	// AI: the visual label can be hidden on phones (compact toolbar), so the
@@ -414,12 +414,10 @@ function createActionButton(icon: string, label: string, flipped=false): {
 	// this value with its phase-specific tooltip in `renderReconform`.
 	el.setAttribute("aria-label", label);
 
-	const iconEl = document.createElement("span");
-	iconEl.classList.add("text-button-icon");
+	const iconEl = createSpan({ cls: "text-button-icon" });
 	setIconSafe(iconEl, icon);
 
-	const labelEl = document.createElement("span");
-	labelEl.classList.add("text-button-label");
+	const labelEl = createSpan({ cls: "text-button-label" });
 	labelEl.setText(label);
 
 	if (flipped) {
@@ -572,12 +570,12 @@ async function refreshPanel(ui: PanelUI, fresh = false, contentChanged = false):
  * AI: G4 — non-invasive warning shown on the reconform button when the template
  * carries Templater expressions but evaluating them is disabled.
  */
-function templaterWarning(templateProps: Map<string, any>): string | null {
+function templaterWarning(templateProps: Map<string, unknown>): string | null {
 	if (getSettings().evaluateTemplaterInNotes) return null;
 
 	const hasExpression = [...templateProps.values()].some(hasTemplaterSyntax);
 	return hasExpression
-		? "The template contains Templater expressions; enable \"Evaluate Templater scripts in notes\" to render them"
+		? "The template contains Templater expressions; enable \"Evaluate template expressions in notes\" to render them"
 		: null;
 }
 
@@ -715,6 +713,7 @@ async function revealInExplorer(file: TAbstractFile): Promise<void> {
 		await leaf.setViewState({ type: "file-explorer", active: true });
 	}
 
+	// eslint-disable-next-line @typescript-eslint/await-thenable -- `revealLeaf` is typed `void` in obsidian@1.5 but returns a Promise on newer API releases; awaiting is a no-op on old runtimes and the correct ordering on new ones.
 	await workspace.revealLeaf(leaf);
 
 	const view = leaf.view as unknown as RevealableFileExplorer;
@@ -747,8 +746,8 @@ async function revealInExplorer(file: TAbstractFile): Promise<void> {
 function setReconformAvailable(
 	ui: PanelUI,
 	isTemplate: boolean,
-	currentProps: Map<string, any>,
-	referenceProps: Map<string, any>
+	currentProps: Map<string, unknown>,
+	referenceProps: Map<string, unknown>
 ): void {
 	ui.reconformIsTemplate = isTemplate;
 	ui.reconformCurrent = currentProps;
@@ -801,12 +800,21 @@ function isNoop(ui: PanelUI, mode: ReconformMode | null): boolean {
 
 /** AI: Visual/action config of a phase; the last phase is shown while idle. */
 function phaseConfig(phase: ReconformPhase): PhaseConfig {
-	return PHASE_CONFIG[Math.min(phase, PHASE_CONFIG.length - 1)];
+	// Explicit switch so every branch indexes the tuple with a literal: the
+	// clamped "done" phase (3) shows the last phase.
+	switch (phase) {
+		case 0:
+			return PHASE_CONFIG[0];
+		case 1:
+			return PHASE_CONFIG[1];
+		default:
+			return PHASE_CONFIG[2];
+	}
 }
 
 /** AI: Mode bound to a phase, or null once the cursor is exhausted (inert). */
 function phaseMode(phase: ReconformPhase): ReconformMode | null {
-	return phase < PHASE_DONE ? PHASE_CONFIG[phase].mode : null;
+	return phase < PHASE_DONE ? phaseConfig(phase).mode : null;
 }
 
 /**

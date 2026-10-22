@@ -27,10 +27,17 @@ export class TemplateScannerModal extends Modal {
         ];
     }
 
-    async onOpen() {
+    // `Modal.onOpen()` is typed `void` (obsidian@1.5): start the async pass
+    // without returning its promise, so the signature stays compatible.
+    onOpen(): void {
+        void this.scan();
+    }
+
+    /** AI: Paints the modal and runs the scanners after one paint frame (E1). */
+    private async scan(): Promise<void> {
         const { contentEl } = this;
         contentEl.addClass("ScannerModal");
-        contentEl.createEl('h3', { text: 'Template Scanner' });
+        contentEl.createEl('h3', { text: 'Template scanner' });
 
         // Let the modal paint before the synchronous cache walk (E1).
         const summaryEl = contentEl.createEl('p', { cls: 'scanner-summary', text: 'Scanning...' });

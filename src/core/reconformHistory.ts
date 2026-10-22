@@ -36,7 +36,7 @@ import { getFileProps, setFileProps } from "./templateAPI";
  */
 export interface ReconformSnapshot {
 	file: TFile;
-	props: Map<string, any>;
+	props: Map<string, unknown>;
 	/** AI: Cursor phase before the press that created this snapshot (0..2). */
 	phase: number;
 }
@@ -63,7 +63,10 @@ function pruneStale(view: MarkdownView): boolean {
 	if (!stack || stack.length === 0) return false;
 
 	const currentFile = view.file;
-	const snapshotFile = stack[stack.length - 1].file;
+	// `stack.length > 0` is guaranteed above; optional chaining satisfies
+	// `noUncheckedIndexedAccess` without an assertion.
+	const snapshotFile = stack[stack.length - 1]?.file;
+	if (!snapshotFile) return false;
 
 	// Same path ⇒ same note (Obsidian may hand back a distinct TFile instance
 	// for the same file, so compare paths, not object identity).
@@ -97,7 +100,7 @@ function notify(view: MarkdownView): void {
  * This is deliberately UNCONDITIONAL: even a no-op press leaves a step on the
  * stack, because the cursor always advances and Back must be able to rewind it.
  */
-export function push(view: MarkdownView, props: Map<string, any>, phase: number): void {
+export function push(view: MarkdownView, props: Map<string, unknown>, phase: number): void {
 	const file = view.file;
 	if (!file) return;
 

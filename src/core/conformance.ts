@@ -21,10 +21,10 @@ export type ReconformMode = 'add-missing' | 'remove-extra' | 'reset-defaults';
  * file. Keeping the merge in one place guarantees they agree.
  */
 export function computeReconformProps(
-	templateProps: Map<string, any>,
-	currentProps: Map<string, any>,
+	templateProps: Map<string, unknown>,
+	currentProps: Map<string, unknown>,
 	mode: ReconformMode
-): Map<string, any> {
+): Map<string, unknown> {
 	switch (mode) {
 		case 'add-missing':
 			return mergeSecondOnFirstMap(templateProps, currentProps, true);
@@ -44,8 +44,8 @@ export function computeReconformProps(
  * raw cache record.
  */
 export function computeTemplateConformance(
-	templateProps: Map<string, any>,
-	parentProps: Map<string, any>
+	templateProps: Map<string, unknown>,
+	parentProps: Map<string, unknown>
 ): { isValid: boolean, neededProps: Set<string>, extraProps: Set<string> } {
 
 	const templatePropsSet = new Set(templateProps.keys());

@@ -1,10 +1,10 @@
 
 export function mergeSecondOnFirstMap(
-	templateMap: Map<string, any>,
-	fileMap: Map<string, any>,
+	templateMap: Map<string, unknown>,
+	fileMap: Map<string, unknown>,
 	tail = true
-): Map<string, any> {
-	const merged = new Map<string, any>();
+): Map<string, unknown> {
+	const merged = new Map<string, unknown>();
 
 	// 1. Inserisce prima le proprietà del TEMPLATE (mantenendo il loro ordine)
 	for (const [key, templateValue] of templateMap.entries()) {
@@ -58,15 +58,21 @@ export function computeMapConformance(
  * Values are compared by identity first, then by JSON representation so nested
  * arrays/objects (e.g. list-valued properties) are handled correctly.
  */
-export function areMapsEqual(first: Map<string, any>, second: Map<string, any>): boolean {
+export function areMapsEqual(first: Map<string, unknown>, second: Map<string, unknown>): boolean {
 	if (first.size !== second.size) return false;
 
 	const firstEntries = [...first.entries()];
 	const secondEntries = [...second.entries()];
 
 	for (let i = 0; i < firstEntries.length; i++) {
-		const [firstKey, firstValue] = firstEntries[i];
-		const [secondKey, secondValue] = secondEntries[i];
+		// Both arrays have `first.size` entries (checked above); the guard only
+		// satisfies `noUncheckedIndexedAccess`.
+		const firstEntry = firstEntries[i];
+		const secondEntry = secondEntries[i];
+		if (!firstEntry || !secondEntry) return false;
+
+		const [firstKey, firstValue] = firstEntry;
+		const [secondKey, secondValue] = secondEntry;
 
 		if (firstKey !== secondKey) return false;
 		if (!areValuesEqual(firstValue, secondValue)) return false;
