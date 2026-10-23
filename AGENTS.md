@@ -10,10 +10,10 @@ Riferimento di progetto: `PROJECT.md` (dominio, UI, auto-apply, scanner, stato e
 - `npm install` first.
 - `npm run dev` - esbuild watch only. DOES NOT typecheck.
 - `npm run build` - `tsc -noEmit -skipLibCheck` + production bundle. Only full verification; run before finishing.
-- `npm run lint`
+- `npm run lint` to run eslint check
+- `npm run typecheck` to check types
 - `npm test` - pure-core tests (`tsc -p tsconfig.test.json` + `node --test test/*.test.cjs`).
-- Typecheck only: `npx tsc -noEmit -skipLibCheck`.
-- Release: `npm version <patch|minor|major>` runs `version-bump.mjs`, syncing `manifest.json` + `versions.json`; tags have no `v` prefix (`.npmrc`).
+- Release: `npm version <patch|minor|major>` handles autonomously release draft only if on main branch and if all checks are passed
 
 ## Gotchas
 - `main.js` is a generated, gitignored bundle. Never edit it; rebuild instead.

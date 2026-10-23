@@ -183,7 +183,7 @@
        controls stay visually and behaviourally indistinguishable from the
        native one (same padding, radius, gap, hover, :focus-visible ring). */
     font-size: var(--metadata-label-font-size);
-    font-family: var(--metadata-label-font);
+    /* font-family: var(--metadata-label-font); */
     font-weight: var(--input-font-weight);
     line-height: var(--line-height-normal);
 
