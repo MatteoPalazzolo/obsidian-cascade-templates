@@ -6,7 +6,7 @@ TypeScript source bundled by esbuild into `main.js`. Single package, plus a pure
 
 Riferimento di progetto: `PROJECT.md` (dominio, UI, auto-apply, scanner, stato e mappa dei moduli). `README.md` è la documentazione utente. Leggi `PROJECT.md` prima di modificare il comportamento del plugin.
 
-Nota inoltre che `FUTURE.md` contiene le nuove feature programmate per le prossime sessioni.
+`FEATURES.md` è il workbench delle feature non ancora concluse: restano lì finché non sono completate, poi si spostano in `PROJECT.md` (archivio della documentazione) e si rimuovono. `PROJECT.md` non anticipa mai feature non completate.
 
 ## Commands
 - `npm install` first.
