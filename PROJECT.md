@@ -97,7 +97,7 @@ Dettagli:
 ## 10. Auto-apply (D1)
 
 - Tre modalità: `off`, `properties`, `full` (default).
-- Trigger indipendente dalla lingua e dalla view: `create` di un `.md` con body vuoto dopo 600 ms, solo a `workspace.layoutReady`; niente nome `Untitled`, niente `file-open` (funziona anche con le righe create/editate dentro una Base). I 600 ms evitano la corsa con il trigger di creazione di Templater, che scrive a 300 ms.
+- Trigger indipendente dalla lingua e dalla view: `create` di un `.md` con body vuoto dopo 200 ms, solo a `workspace.layoutReady`; niente nome `Untitled`, niente `file-open` (funziona anche con le righe create/editate dentro una Base). I 200 ms evitano la corsa con il trigger di creazione di Templater, che scrive a 300 ms.
 - Il body è ricontrollato atomicamente dentro `vault.process`: se l'utente ha scritto nel frattempo, l'azione si annulla.
 - Il frontmatter è sempre unito con `add-missing`: i valori esistenti vincono, anche su file creati da una Base.
 - `full` copia anche il body del template. Sui template annidati l'ereditarietà è totale (props + body), ma le espressioni `<% %>` restano raw.

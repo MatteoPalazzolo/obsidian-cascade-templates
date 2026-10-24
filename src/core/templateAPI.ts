@@ -39,13 +39,13 @@ function getCtx(): Plugin {
  * AI: D1 — how long to wait before inspecting a newly created file.
  *
  * Obsidian writes an empty file first and the creator may fill it right after
- * (Templater, "new note from template", another plugin). 600 ms leaves room for
+ * (Templater, "new note from template", another plugin). 200 ms leaves room for
  * Templater's own on-create pass (300 ms plus parsing): at 300 ms the two
  * timers tied and Templater's late write could wipe the properties we had just
  * merged. The delay also leaves room for a Base row editor to write its initial
  * frontmatter.
  */
-const AUTO_APPLY_SETTLE_MS = 600;
+const AUTO_APPLY_SETTLE_MS = 200;
 
 /** AI: Auto-apply timers still pending, cleared on unload (non-invasive). */
 const pendingAutoApply = new Set<number>();

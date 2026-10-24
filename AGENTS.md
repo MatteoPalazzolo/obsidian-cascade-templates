@@ -6,6 +6,8 @@ TypeScript source bundled by esbuild into `main.js`. Single package, plus a pure
 
 Riferimento di progetto: `PROJECT.md` (dominio, UI, auto-apply, scanner, stato e mappa dei moduli). `README.md` è la documentazione utente. Leggi `PROJECT.md` prima di modificare il comportamento del plugin.
 
+Nota inoltre che `FUTURE.md` contiene le nuove feature programmate per le prossime sessioni.
+
 ## Commands
 - `npm install` first.
 - `npm run dev` - esbuild watch only. DOES NOT typecheck.
@@ -19,7 +21,7 @@ Riferimento di progetto: `PROJECT.md` (dominio, UI, auto-apply, scanner, stato e
 - `main.js` is a generated, gitignored bundle. Never edit it; rebuild instead.
 - New/changed files must be LF (`.editorconfig` `end_of_line = lf`).
 - Ti trovi all'interno di una sandbox che gira su WSL con il progetto condiviso in un mount da una cartella di windows, tienine conto.
-- Templater with `trigger_on_file_creation` on evaluates `<% … %>` in every new `.md` file under 100 KB, including `!Template.md` (its `on_file_creation` falls into an unconditional overwrite branch). Templates are only safe inside Templater's own `templates_folder`; our bridge cannot prevent that write. Its pass rewrites brand-new empty files at ~300 ms, hence auto-apply settles at 600 ms.
+- Templater with `trigger_on_file_creation` on evaluates `<% … %>` in every new `.md` file under 100 KB, including `!Template.md` (its `on_file_creation` falls into an unconditional overwrite branch). Templates are only safe inside Templater's own `templates_folder`; our bridge cannot prevent that write. Its pass rewrites brand-new empty files at ~300 ms, hence auto-apply settles at 200 ms.
 
 ## Conventions
 - `tsconfig` `baseUrl "."`: `main.ts` imports use `src/...`, files under `src/` use relative imports. Match neighbors.
@@ -33,6 +35,7 @@ Riferimento di progetto: `PROJECT.md` (dominio, UI, auto-apply, scanner, stato e
 - Prestazioni: Non eseguire scansioni massive del vault all'avvio nel thread principale (onLayoutReady). Differisci i caricamenti pesanti ed evita operazioni bloccanti.
 - CSS & Temi: Usa le variabili CSS native di Obsidian (es. --text-normal, --background-primary) per garantire che il plugin si adatti perfettamente sia al tema chiaro/scuro sia ai temi personalizzati.
 - Conformità UI (seamless): Quando modifichi o inietti interfaccia, l'interfaccia nativa che stai toccando è la fonte di verità. Riutilizza le classi/componenti native di Obsidian (es. text-icon-button, text-button-icon, text-button-label) e le sue variabili CSS (--metadata-label-font, --metadata-label-font-size, --button-radius, --size-*, --text-muted, --background-modifier-hover, --icon-color-hover, --input-font-weight, --line-height-normal, ...) al posto di valori a mano, e non ridefinire gli stati (hover, :focus-visible, disabled, active) se puoi ereditare quelli nativi. Replica tipografia, spaziature e stati del controllo nativo equivalente in modo che l'elemento iniettato risulti indistinguibile da quello nativo. Ispeziona l'elemento reale (devtools) e verifica la resa prima di chiudere il lavoro.
+- Qualora tu abbia dubbi in merito alla documentazione o a dei programming patterns, considera di visitare la documentazione ufficiale a https://docs.obsidian.md/Home 
 
 ## User Guidelines
 - alla fine dell'implementazione di uno o più punti suggeriscimi sempre cosa scrivere nel git commit che gestirò in autonomia
@@ -43,5 +46,5 @@ Riferimento di progetto: `PROJECT.md` (dominio, UI, auto-apply, scanner, stato e
 - il prodotto deve risultare NON invasivo: nessuna soluzione automatica di reconform a cascata se non specificata da una feature gestita dall'UI (per esempio lo scanner); le automazioni in una nota devono restare circoscritte alla nota stessa
 
 ## Env
-- generalmente aspettati che io abbia eseguito npm run dev da un ambiente windows, il watch si occuperà di fare una build dev a ogni nuova modifica
+- generalmente aspettati che io abbia eseguito `npm run dev` da un ambiente windows, il watch si occuperà di fare una build dev a ogni nuova modifica
 - anche se ne hai la possibilità attraverso MCP evita sempre e categoricamente di eseguire comandi sull'host windows per vie traverse, limitati al tuo ambiente a ai tool che ti sono stati dati, senza sfruttare eval o exec che ti dovrebbero servire solo per il test delle feature in real time
