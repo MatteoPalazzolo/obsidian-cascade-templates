@@ -4,6 +4,7 @@ Riferimento del progetto Cascade Templates: dominio, comportamento visibile, vin
 
 Documenti complementari:
 - `AGENTS.md` — comportamento operativo: comandi, gotcha, convenzioni e linee guida.
+- `YOUDO.md` — verifiche manuali richieste all'utente; le voci restano finché non sono state eseguite.
 - `README.md` — documentazione per l'utente finale.
 
 ---
@@ -129,7 +130,7 @@ Dettagli:
   - **E2** autofix dello scanner e "fix all" riusando `reconformFile`, spingendo in history come la UI.
   - Riattivazione dello scanner: reimportare `TemplateScannerModal` in `main.ts` e ripristinare i settings.
   - **F3** release e versioning (`npm version`, tag senza prefisso `v`).
-  - Verifica live del pannello su casi limite: focus su search/explorer, split multipli.
+  - Verifica live del pannello su casi limite (focus su search/explorer, split multipli): check tracciato in `YOUDO.md`.
 - Test: core puro coperto da `npm test` (`setOperations`, `mapOperations`, `conformance`, 15 test); history coperta dallo smoke test, non è pura (WeakMap su `MarkdownView` + I/O).
 
 ## 14. Riferimenti al codice

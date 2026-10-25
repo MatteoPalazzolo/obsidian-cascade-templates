@@ -8,6 +8,8 @@ Riferimento di progetto: `PROJECT.md` (dominio, UI, auto-apply, scanner, stato e
 
 `FEATURES.md` è il workbench delle feature non ancora concluse: restano lì finché non sono completate, poi si spostano in `PROJECT.md` (archivio della documentazione) e si rimuovono. `PROJECT.md` non anticipa mai feature non completate.
 
+`YOUDO.md` è il registro delle verifiche manuali richieste all'utente (devtools, resa desktop/mobile, long-press, comportamento sull'host Windows): ogni check che non è eseguibile dentro questa sandbox va annotato lì, non dentro `AGENTS.md`, `PROJECT.md` o `FEATURES.md`. L'utente rimuove la voce dopo aver eseguito il controllo; un file vuoto è lo stato normale.
+
 ## Commands
 - `npm install` first.
 - `npm run dev` - esbuild watch only. DOES NOT typecheck.
@@ -34,7 +36,7 @@ Riferimento di progetto: `PROJECT.md` (dominio, UI, auto-apply, scanner, stato e
 - Lifecycle Hooks: Ripulisci sempre eventi, listener e intervalli all'interno del metodo onunload(). Utilizza helper come this.registerEvent() o this.registerInterval() che gestiscono automaticamente il cleanup.
 - Prestazioni: Non eseguire scansioni massive del vault all'avvio nel thread principale (onLayoutReady). Differisci i caricamenti pesanti ed evita operazioni bloccanti.
 - CSS & Temi: Usa le variabili CSS native di Obsidian (es. --text-normal, --background-primary) per garantire che il plugin si adatti perfettamente sia al tema chiaro/scuro sia ai temi personalizzati.
-- Conformità UI (seamless): Quando modifichi o inietti interfaccia, l'interfaccia nativa che stai toccando è la fonte di verità. Riutilizza le classi/componenti native di Obsidian (es. text-icon-button, text-button-icon, text-button-label) e le sue variabili CSS (--metadata-label-font, --metadata-label-font-size, --button-radius, --size-*, --text-muted, --background-modifier-hover, --icon-color-hover, --input-font-weight, --line-height-normal, ...) al posto di valori a mano, e non ridefinire gli stati (hover, :focus-visible, disabled, active) se puoi ereditare quelli nativi. Replica tipografia, spaziature e stati del controllo nativo equivalente in modo che l'elemento iniettato risulti indistinguibile da quello nativo. Ispeziona l'elemento reale (devtools) e verifica la resa prima di chiudere il lavoro.
+- Conformità UI (seamless): Quando modifichi o inietti interfaccia, l'interfaccia nativa che stai toccando è la fonte di verità. Riutilizza le classi/componenti native di Obsidian (es. text-icon-button, text-button-icon, text-button-label) e le sue variabili CSS (--metadata-label-font, --metadata-label-font-size, --button-radius, --size-*, --text-muted, --background-modifier-hover, --icon-color-hover, --input-font-weight, --line-height-normal, ...) al posto di valori a mano, e non ridefinire gli stati (hover, :focus-visible, disabled, active) se puoi ereditare quelli nativi. Replica tipografia, spaziature e stati del controllo nativo equivalente in modo che l'elemento iniettato risulti indistinguibile da quello nativo. La verifica visiva in devtools non è eseguibile in sandbox: registrala in `YOUDO.md` invece di dichiararla fatta.
 - Qualora tu abbia dubbi in merito alla documentazione o a dei programming patterns, considera di visitare la documentazione ufficiale a https://docs.obsidian.md/Home 
 
 ## User Guidelines

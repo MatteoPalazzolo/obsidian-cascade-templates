@@ -7,6 +7,9 @@ feature pianificate.
 
 Stati: `idea` → `in corso` → `completata` (da spostare).
 
+I controlli manuali non si annotano qui: vivono in `YOUDO.md`, che è
+l'unico elenco delle verifiche a carico dell'utente.
+
 ## Voce di menu per creare il template di cartella
 
 Stato: idea.
@@ -47,13 +50,15 @@ Note implementative:
   conforme resta un errore dello scanner;
 - la distinzione root/child usa lo stesso walk sincrono di `getTemplateOfFile`:
   nessun costo aggiuntivo;
-- registrarsi su `file-menu` con la sola guardia `TFolder`; verificare dal vivo
-  `source`, `setSection("action")` e il long-press mobile;
+- registrarsi su `file-menu` con la sola guardia `TFolder`; la verifica dal vivo
+  (`source`, `setSection("action")`, long-press mobile) è tracciata in
+  `YOUDO.md`;
 - aggiornare README e descrizione della setting auto-apply: l'azione esplicita
   eredita le proprietà anche con auto-apply disattivato.
 
 Criteri di completamento:
-- desktop e mobile; `off`, `properties`, `full`;
+- desktop e mobile (verifica tracciata in `YOUDO.md`); `off`, `properties`,
+  `full`;
 - root del vault, root di cascata e cartelle child;
 - cartella con template locale, con solo template antenato, senza nessuno dei
   due;
