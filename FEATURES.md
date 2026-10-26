@@ -361,3 +361,112 @@ Aperti:
 - interazione con auto-apply e note create fuori da un template;
 - se il caso valga la complessità o se richiedere sempre un template sia
   sufficiente.
+
+## Settings UI conforme al redesign di Obsidian
+
+Stato: idea — da pianificare dopo la decisione su `minAppVersion` e sull'ordine
+rispetto a Interfaces.
+
+Perché: Obsidian ha ridisegnato le impostazioni (header della tab, poi una card
+unica con le righe separate da hairline) e dalla 1.13 i plugin possono
+descrivere la tab in modo dichiarativo, entrando anche nella ricerca globale
+delle impostazioni. Oggi la tab è una lista piatta di `new Setting(containerEl)`
+in `src/settings.ts` e resta visivamente indietro rispetto alle tab core.
+L'intervento è solo di struttura e resa: nessun cambio di comportamento, di
+persistenza o del modello di settings.
+
+### Le due API
+
+- **`SettingGroup`** (Obsidian 1.11.0): resa imperativa del blocco con heading e
+  separatori, usabile dentro `display()`. Non dà ricerca globale, liste o
+  sub-pages. Da 1.11 c'è anche `SettingTab.icon` per la sidebar.
+- **`getSettingDefinitions()`** (Obsidian 1.13.0): API dichiarativa completa.
+  Obsidian renderizza, indicizza per la ricerca globale, salva da solo e
+  gestisce `visible` / `disabled` / `validate`, gruppi, liste e sub-pages.
+  `display()` viene bypassato quando il metodo restituisce un array non vuoto.
+  `control.key` normalmente legge `this.plugin.settings[key]`; il plugin ha uno
+  store module-level, quindi vanno sovrascritti `getControlValue()` e
+  `setControlValue()` per delegare a `getSettings()` / `updateSettings()`.
+  La riga del bridge Templater (descrizione dinamica + pulsante) diventa un
+  `render` callback. `getSettingDefinitions()` viene chiamato anche alla
+  registrazione per indicizzare la ricerca: deve restare economico.
+
+### Percorsi possibili
+
+| | Implementazione | `minAppVersion` | Costo |
+|---|---|---|---|
+| A | solo `SettingGroup` in `display()`, con fallback piatto sotto 1.11 | resta 1.5.0 | resa nuova, niente ricerca globale |
+| B | dichiarativo + `display()` legacy (dual support) | resta 1.5.0 | due implementazioni da tenere allineate |
+| C | solo dichiarativo, `display()` rimosso | sale a 1.13.0 | una sola implementazione, taglia gli utenti < 1.13 |
+
+La guida ufficiale consiglia C quando si può alzare il minimo, B quando
+esiste una base utenti su versioni precedenti. A ha senso solo se interessa la
+resa e non l'integrazione con la ricerca.
+
+### Dipendenze e ordine
+
+- I tipi installati sono `obsidian@1.5.7` e non contengono né `SettingGroup` né
+  `getSettingDefinitions`. Il bump va fatto a `~1.13.0` (non `latest` e non
+  `^1.13.0`): i tipi devono restare allineati al floor della feature, non
+  all'ultima versione. `npm install` va lanciato da Windows: in sandbox il
+  registry è bloccato.
+- `minAppVersion` è `1.5.0` in `manifest.json`. B lo lascia, C lo porta a
+  `1.13.0`. A resta a 1.5.
+- **Interfaces aggiunge una setting.** Con B conviene migrare la UI dopo
+  Interfaces: il toggle nasce nel vecchio `display()` insieme agli altri e
+  viene convertito una volta sola. Migrando prima, ogni nuova setting va
+  scritta due volte. Con C l'ordine è indifferente.
+- La regola `obsidianmd/settings-tab/prefer-setting-definitions` è disattivata
+  in `eslint.config.mts` con la motivazione legata a `minAppVersion` 1.5:
+  adottando l'API dichiarativa il commento va aggiornato o l'override rimosso.
+  `require-display` e `no-deprecated-display` sono già coerenti con B e C.
+
+### Resa e contenuti
+
+- Nessun heading con il nome del plugin o "Settings": la tab è già intitolata
+  nella sidebar. Heading solo quando esistono almeno due sezioni distinte;
+  con le setting attuali basta un blocco unico, i gruppi arriveranno con
+  Interfaces.
+- Le descrizioni attuali di auto-apply e Templater sono lunghe: la style guide
+  chiede una frase, con il dettaglio spostato nel README. È una decisione di
+  contenuto, non solo di CSS.
+- Un solo controllo per riga, sentence case: già rispettati.
+- Nessun CSS custom previsto: la resa deve venire dalle classi native.
+
+### Impatto sul codice
+
+- `package.json` / `package-lock.json`: bump dei tipi a `~1.13.0`.
+- `src/settings.ts`: `getSettingDefinitions()`, `getControlValue()` /
+  `setControlValue()`, bridge test in `render`, `display()` legacy o rimosso.
+- `manifest.json`: solo per C.
+- `eslint.config.mts`: override e commento della regola sulle settings.
+- `main.ts`: verificare se il commento `eslint-disable` su `onload()` asincrono
+  serve ancora con i tipi 1.13.
+- `README.md`, `PROJECT.md`, `YOUDO.md`: documentazione e check visivi.
+
+### Criteri di completamento
+
+- `npm run build`, `npm run lint`, `npm test` verdi.
+- Persistenza, refresh dei pannelli e bridge test invariati.
+- Se B/C: le impostazioni compaiono nella ricerca globale.
+- Resa verificata su desktop e mobile, light e dark, e — se B — anche su una
+  versione < 1.13.
+- README e PROJECT.md aggiornati; voce spostata in `PROJECT.md` e rimossa da
+  `FEATURES.md`.
+
+### Aperti
+
+- Scelta tra A, B e C, e quindi se alzare `minAppVersion`.
+- Verificare che `obsidian@1.13.0` esista su npm e che i tipi contengano
+  davvero `getSettingDefinitions()`: la reference API online non lo elenca
+  ancora, lo documenta solo la guida.
+- Raggruppamenti definitivi: blocco unico oppure gruppi Template / Templater /
+  Toolbar.
+- Se accorciare le descrizioni e linkare il README.
+- Se impostare `this.icon` sulla tab.
+- Se usare `SettingGroup` anche nel `display()` legacy per coprire 1.11–1.12.
+
+Riferimenti:
+- [Settings](https://docs.obsidian.md/Plugins/User+interface/Settings)
+- [Migrate to declarative settings](https://docs.obsidian.md/plugins/guides/migrate-declarative-settings)
+- [SettingGroup](https://docs.obsidian.md/Reference/TypeScript+API/SettingGroup)
