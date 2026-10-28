@@ -10,6 +10,412 @@ Stati: `idea` → `in corso` → `completata` (da spostare).
 I controlli manuali non si annotano qui: vivono in `YOUDO.md`, che è
 l'unico elenco delle verifiche a carico dell'utente.
 
+## Dashboard Cascade Templates (ex scanner, E)
+
+Stato: in corso.
+
+Perché: lo scanner di 1.0.0 è un accordion piatto con due liste di file, senza
+gerarchia, senza scope visibile e senza azioni. Ma il modello del plugin è un
+albero di cartelle: un elenco piatto non lo spiega e non permette di agire. Il
+redesign sostituisce il Modal con una dashboard a tre tab (struttura, problemi,
+history), espone i verbi di conformità con i gate corretti e introduce un
+journal di sessione che rende reversibili anche le operazioni globali. Senza il
+journal, `Align notes` su tutto il vault sarebbe esattamente l'automazione a
+cascata che il prodotto dichiara di non essere.
+
+### Lessico
+
+- **template**: file con il nome fisso `getTemplateFilename()` (`!Template.md`
+  di default) dentro una cartella. Un template per cartella, quindi nessuna
+  ambiguità di risoluzione.
+- **cascata**: sottostruttura di cartelle che eredita il frontmatter di un
+  template lungo la catena degli antenati.
+- **local root**: la cartella con un template che non ha template antenati. È la
+  radice di una cascata.
+- **sotto-cascata**: una cartella con template dentro il sottoalbero di
+  un'altra cascata. Il suo template ha come riferimento il template
+  dell'antenato più vicino, non la local root.
+- **catena**: template → template parent → … → local root.
+- **sound**: ogni template della catena è conforme al proprio parent. Una local
+  root è sound per definizione. Solo una catena sound autorizza `Align`.
+- **foresta**: l'insieme dei sottoalberi delle sole local root. È l'universo
+  della dashboard: fuori da lì non esiste nodo.
+- **partecipante**: nota con frontmatter presente. Una nota senza frontmatter
+  non fa parte del sistema.
+
+### Modello dell'albero
+
+- L'albero si deriva **dalla struttura delle cartelle**, non dall'elenco dei
+  file: per ogni cartella si risolve il template con lo stesso walk di
+  `getTemplateOfFile` (`src/core/templateAPI.ts:98`).
+- Figli di una cartella, in quest'ordine: cartelle, poi il suo template, poi le
+  note. Il template è un figlio della cartella e non compare mai tra le note.
+- Ogni nodo ha esattamente uno stato: `ok`, `missing`, `extra`.
+  - il template di una local root è sempre `ok`;
+  - un template interno è `missing` se gli mancano proprietà del parent; le
+    proprietà extra sono specializzazione attesa e non sono mai un problema;
+  - una nota è `missing` se le manca una chiave del riferimento, `extra` se ne
+    ha una che il riferimento non ha, con `missing` prioritario.
+- **Nessuno stato neutro.**
+- **`ok` significa "stesso insieme di chiavi", non "stessi valori".**
+  `computeMapConformance` confronta solo i set di chiavi
+  (`src/core/mapOperations.ts:35`): una nota con `status: draft` contro un
+  template `status: published` è `ok`. Va scritto nel README, perché è la prima
+  cosa che verrà segnalata come bug. Le azioni non toccano mai i valori
+  esistenti.
+- **Nota senza frontmatter o non indicizzata**: non partecipa. Non compare in
+  `Issues`, non entra nei conteggi, non è raggiungibile dai verbi. Compare in
+  `Cascades` come riga attenuata senza badge, perché la mappa strutturale non
+  deve mentire sul contenuto della cartella.
+- Badge di cartella: aggregato dei figli con precedenza `missing` > `extra` >
+  `ok`.
+- Conteggi di una riga: `T` (template non conformi nel sottoalbero), `Nm` (note
+  `missing`), `Ne` (note `extra`). Sono **dello scope dell'azione**, cioè del
+  sottoalbero: il numero che leggi è il numero di file che il click toccherà.
+
+### Struttura del modal
+
+Titolo `Cascade Templates`. Non è più uno "scanner": è la dashboard del plugin.
+
+- Header condiviso dai tre tab: `Fix all (N)` centrato e `undo-2`.
+- Tab: `Cascades (R) | Issues (N) | History (N)`.
+  - `Cascades (R)`: `R` = numero di local root.
+  - `Issues (N)`: `N` = file non conformi (le righe di contesto non contano).
+  - `History (N)`: `N` = entry ripristinabili.
+  - `Fix all (N)` mostra lo stesso `N` di `Issues`, altrimenti nello stesso
+    header compaiono due cifre diverse e sembra rotto.
+  - `Issues` e `History` sono disabilitati quando il loro counter è 0.
+- Si apre su `Cascades`.
+- Durante un batch o un rewind: tab, undo e chiusura del modal bloccati (stesso
+  mutex).
+- Progresso: linea indeterminata in cima al contenuto, `--interactive-accent`,
+  2–3 px, animazione in loop, statica e attenuata con `prefers-reduced-motion`.
+  Accanto un label testuale (`Fixing 2/3 · Updating notes`): la linea da sola
+  non distingue "sta lavorando" da "si è piantato".
+- Report di fine operazione: `Notice` se è andato tutto bene, dialog di
+  dettaglio se ci sono fallimenti.
+
+#### Tab `Cascades`
+
+- Sola lettura. Nessun verbo, nessun hover, nessuna conferma.
+- Scheletro: local root ordinate per **path** (collation numerica), poi le
+  cartelle, il template locale e le note **collassate** in un gruppo espandibile
+  (`24 notes`). L'ordinamento è identico in `Issues`.
+- Ogni local root mostra il riferimento risolto
+  (`projects/alpha → _templates/project.md`): il meccanismo "template della
+  cartella antenata più vicina" è la cosa che gli utenti sbagliano di più, e la
+  vista strutturale serve esattamente a questo.
+- Footer: `N notes are outside any cascade`.
+- Empty state (zero cascate): guida **statica** in tre passi (scegli la
+  cartella-radice; crea `!Template.md` con le proprietà da ereditare; le note
+  dentro e sotto la ereditano) più uno snippet di esempio con `Copy` negli
+  appunti. Nessun pulsante che crea file: la cartella è la decisione portante,
+  e il plugin non la prende al posto dell'utente.
+
+#### Tab `Issues`
+
+- Solo i rami che portano a un problema. Gli antenati restano come righe di
+  contesto, attenuate, senza azioni, e non contano nei counter.
+- Raggruppamento per tipo, perché i verbi sono tipizzati:
+  - `Templates needing update` → `Update templates`;
+  - `Notes missing properties` → `Update notes`;
+  - `Notes with extra properties` → `Align notes`.
+- Ogni gruppo mostra il totale e ha il verbo bulk; ogni riga porta il breadcrumb
+  della cascata e i verbi della riga.
+- Nessun filtro, nessuna ricerca, nessun multi-select: si entra e si preme il
+  verbo. Gli scope sono già espressi dai nodi e una selezione arbitraria
+  mescolerebbe template e note.
+- Card di errore: quando un batch lascia file falliti, in testa al tab compare
+  una card con il dettaglio e una `×` per il dismiss. **L'errore non è uno stato
+  di conformità**: non entra nel badge, non ha un colore nella gerarchia, e
+  sparisce al dismiss o al primo retry riuscito.
+
+#### Tab `History`
+
+- Una card orizzontale per entry, in ordine cronologico decrescente:
+  verbo, timestamp, `Templates modified: N · Notes modified: N · Folders
+  involved: N`, e `Restore to this snapshot`.
+- Niente log, niente elenco file, niente errori: la history è un riassunto.
+  I dettagli di esecuzione stanno nella card di errore di `Issues`.
+- `Folders involved` = cartelle distinte che contengono almeno un file
+  modificato.
+- Le entry prodotte da `Fix all` portano `routine: {id, step, total}` e sono
+  raggruppate sotto un header `Fix all · 3 operations`. Restano espansi; ognuna
+  resta ripristinabile singolarmente. Se la macro si è fermata:
+  `Fix all · stopped after phase 1`.
+- `Restore to this snapshot` annulla tutte le entry più recenti (vedi Journal).
+
+### Verbi
+
+| Verbo | Dove | File toccati | Gate |
+|---|---|---|---|
+| `Update template` | riga template | quel template | nessuno |
+| `Update templates` | cartella, local root, `All cascades` | solo template, top-down per profondità | nessuno |
+| `Update note` / `Update notes` | riga nota / cartella, local root, `All cascades` | solo note | nessuno |
+| `Align note` / `Align notes` | riga nota / cartella, local root, `All cascades` | solo note | catena sound |
+| `Fix all` | header del modal | template, poi note, poi note | macro, vedi sotto |
+| `Undo last operation` | header del modal | l'entry in cima | conferma se ci sono divergenze |
+| `Restore to this snapshot` | card della history | tutte le entry più recenti | conferma con diff |
+
+- Non esistono: `Align template`, `Reset`, `Update` combinato template + note,
+  `Rescan`.
+- `Update` è additivo e sempre disponibile; `Align` è distruttivo e gated.
+- La ricorsività **non è un'opzione**: una cartella agisce sul sottoalbero per
+  definizione, il caso non ricorsivo è la riga singola.
+- `All cascades` è una root virtuale con gli stessi tre verbi, sempre ricorsiva.
+- `Align` si sblocca solo se tutta la catena fino alla local root è sound.
+  Motivo sul nodo e nel gruppo di `Issues`, non solo al click: aggiornare un
+  template e poi cancellare proprietà nella stessa azione non è ammesso,
+  `Update templates` è l'operazione separata.
+- Il tipo di file è esplicito nel verbo, lo scope è implicito nella riga.
+
+### Batch
+
+- Un click = un batch omogeneo (stesso tipo di file, stesso verbo) = una entry
+  del journal.
+- **Dry run** prima di eseguire: calcola il target di ogni nodo con le stesse
+  funzioni pure del batch, confronta con il corrente e conta solo i file che
+  cambierebbero davvero. La stessa passata produce il numero per la conferma, la
+  stima di peso dell'entry e il rilevamento di `<% %>` nei riferimenti. Nessuna
+  scrittura, nessun accesso al disco: solo mappe dalla cache.
+- Conferma **per scope**: bulk su cartella, local root o `All cascades` sempre;
+  azione su singolo file mai.
+- Esecuzione sequenziale in ordine deterministico (superficiale → profondo).
+- Fallimento in avanti:
+  - **note**: foglie indipendenti → si prosegue sulle altre e si riportano le
+    fallite;
+  - **template**: catena di dipendenza (il target di un figlio dipende dallo
+    stato del padre) → si ferma il sottoalbero, i fratelli proseguono.
+  In entrambi i casi l'entry resta nel journal con `after` solo per i file
+  effettivamente scritti e `skipped` per gli altri; un retry riparte dai
+  mancanti, ed è sicuro perché ogni scrittura è idempotente (target state, non
+  delta).
+- Il conteggio riportato nella `Notice` è quello reale, non la stima del dry
+  run.
+
+### `Fix all`
+
+- **Macro, non verbo nuovo.** Esegue tre operazioni in sequenza, tre entry
+  distinte: `Update templates` → `Update notes` → `Align notes`.
+- L'ordine è obbligato: `Update templates` cambia gli insiemi di riferimento,
+  quindi le note possono diventare `missing` (fase 2) e le `extra` possono
+  sparire (fase 3). Dopo la fase 1 la catena è sound per costruzione, quindi il
+  gate di `Align` è soddisfatto.
+- Una sola conferma per tutta la macro, con le tre fasi e i conteggi stimati. I
+  conteggi delle fasi 2 e 3 sono **stime**, perché dipendono dall'esito della
+  fase 1; i numeri veri finiscono nelle card della history.
+- Errore: si chiude la fase in corso secondo la regola del suo tipo, poi la
+  macro **non entra nelle fasi successive**. Dialog con cosa è successo, quali
+  fasi sono girate e quali no, e invito a rilanciare `Fix all` (sicuro,
+  idempotente).
+- Non è atomica e non viene presentata come tale: ogni confine di fase è uno
+  stato valido della foresta, quindi l'undo per entry non lascia mai un ibrido
+  incoerente.
+- UX: pulsante centrato nell'header, `mod-cta` (accent del tema, **non** rosso:
+  il rosso è già `missing` nei badge ed è la convenzione Obsidian per le azioni
+  distruttive), icona `sparkles`, label `Fix all (12)`, disabilitato a 0 con
+  tooltip `No issues to fix`.
+
+### Journal
+
+- Vive nel plugin, non nel modal: chiudere e riaprire la dashboard conserva la
+  history. Scope = sessione, muore con `onunload`.
+- Unifica le scritture di dashboard e pannello Properties:
+  `origin: "scanner" | "panel" | "fix-all"`.
+- Entry: `{id, origin, at, routine?, files: [{path, before, after, skipped?}]}`.
+  `before` è la mappa **completa**; `after` solo le chiavi divergenti.
+- Modello a **target state**, non a delta: un edit manuale non crea buchi,
+  perché viene assorbito dal `before` della entry successiva che tocca quel
+  file.
+- `Undo last operation` = pop dell'entry in cima. `Restore to this snapshot` =
+  pop di tutta la coda più recente, applicando per ogni file il target preso
+  dalla **entry più vecchia del range che l'ha toccato**. Non si applicano le
+  entry in ordine: si scrive direttamente lo stato finale.
+- Il restore è **scoped alle sole chiavi toccate**: le chiavi estranee
+  sopravvivono sempre; le chiavi toccate vengono sovrascritte.
+- Conflitti: preflight che ripete il rewind in memoria. Una divergenza su una
+  chiave toccata è un conflitto → conferma con diff
+  (`file → chiave: tuo valore → ripristinato`), non abort automatico: il target
+  esiste, la decisione è dell'utente. Diff per chiave fino a una soglia di file
+  (10), poi aggregato per file con espansione.
+- File cancellati o rinominati tra l'operazione e il rewind: **skip con avviso**
+  nel preflight (`2 files no longer exist`). Non è un'applicazione parziale: non
+  c'è più nessuno stato da ripristinare.
+- Fallimento parziale durante il rewind: stop immediato, **entry non
+  consumata**, riporto di fatti/non fatti, retry idempotente.
+- Non atomicità: N `process` sequenziali, nessuna transazione. UI congelata,
+  eventi `changed` soppressi durante il batch, un solo ricalcolo finale dai dati
+  del journal. Un quit a metà lascia uno stato parziale non tracciato: rischio
+  accettato e dichiarato in UI.
+- Divergenze: **calcolate on demand**, confrontando il valore corrente con
+  l'`after` dell'ultima entry che ha scritto quella chiave. Non si traccia
+  nulla; l'unica cosa che viene dall'evento `changed` è il timestamp
+  (`changed manually at 14:31`).
+- Un file non indicizzato o senza frontmatter non partecipa, quindi non
+  interferisce.
+
+### Eviction e veto
+
+- Budget in byte stimati (`Σ (len(chiave) + len(raw)) × 2`), con **internment**
+  per contenuto di mappe e frammenti: una cascata produce molti frontmatter
+  identici, e senza internment il budget si esaurisce in due operazioni globali.
+- Eviction **FIFO dalla testa**, unico punto di rimozione del modulo. Mai per
+  costo, mai dal centro, nessun pinning in v1.
+- La troncatura è visibile: prima riga della history
+  `N older operations are no longer restorable`.
+- Veto solo quando **una singola entry supera `budget / 2`**: dialog a due
+  bottoni, `Proceed` (tronca la history) e `Cancel`. "Procedi senza registrare"
+  non è un'opzione, equivale a troncare.
+- Budget: 8 MB su mobile, 32 MB su desktop (`Platform.isMobile`).
+
+### Integrazione col pannello Properties
+
+- Il Back diventa una **vista filtrata sul journal** per path: non esiste più
+  uno stack separato.
+- Il cursore di fase resta per-view e **si resetta sull'edit manuale**, come
+  oggi: la sessione di reconform finisce, il journal no.
+- Severità stretta del Back: disponibile solo se tutte le chiavi scritte
+  dall'entry in cima sono ancora uguali al suo `after`. Altrimenti è disabilitato
+  con il motivo (`status changed manually at 14:31`) invece di sparire.
+- Il falso positivo attuale sparisce: una chiave estranea aggiunta a mano non
+  uccide più la sessione.
+- `clearHistory` in `src/features/metadataPanel.ts:546` diventa `resetCursor`;
+  `clear()` in `src/core/reconformHistory.ts:152` smette di distruggere l'undo.
+- Il pannello guadagna una sola affordance: `Open cascade in scanner`, che apre
+  la dashboard sul tab `Cascades`, già scoped alla cascata del file corrente.
+  È anche l'entry point mobile.
+
+### Indicizzazione
+
+- Eventi: `metadataCache.on("resolve")` per file e `metadataCache.on("resolved")`
+  per tutti; quest'ultimo rifire anche dopo le modifiche, quindi non è one-shot.
+- Predicato: tutti i `.md` candidati hanno `getFileCache() !== null`. Se è vero
+  si rende subito (caso normale a plugin già caricato).
+- Altrimenti schermata `Waiting for indexing…` con il conteggio, in ascolto sui
+  due eventi, rivalutazione debounced.
+- Timeout di sicurezza → si procede: un file non indicizzato è trattato come una
+  nota senza frontmatter, quindi fuori dal sistema. Nessuno stato "non
+  indicizzato" nei tab.
+- La schermata appare solo quando serve.
+
+### Mobile
+
+- Nessun hover: le azioni vivono nel menu `⋯` della riga.
+- Desktop: icone inline su hover/focus, `⋯` come fallback.
+- Tab a segmenti in stile nativo, nessun `‹ Back`.
+- Indentazione: 16 px desktop / 12 px mobile sui primi 3 livelli, metà oltre il
+  4°, clampata al 40% della larghezza della riga; sotto clamp la riga mostra il
+  nome della cartella padre in linea (`alpha / beta / note`).
+
+### Tastiera
+
+Pattern ARIA del tree, **roving tabindex**: l'albero è un unico stop di
+tabulazione.
+
+- `↑` / `↓`: riga precedente / successiva visibile;
+- `→`: espande la cartella, o va al primo figlio se già espansa;
+- `←`: collassa, o va al padre se già collassata;
+- `Enter`: apre il menu `⋯` della riga (non esegue il verbo primario: stesso
+  modello di mobile, niente azioni distruttive da un tasto premuto per sbaglio);
+- `Esc`: chiude il menu, poi il modal.
+
+`role="treeitem"`, `aria-level`, `aria-expanded`, DOM in ordine visivo. Va fatto
+insieme al renderer, non retrofittato.
+
+### Performance
+
+- La foresta si costruisce **top-down sulle cartelle** con memoizzazione
+  `cartella → template`. Non per file: `getTemplateOfFile` fa un
+  `getAbstractFileByPath` per livello di antenato, per file, e su 10k note
+  diventa decine di migliaia di lookup per rebuild.
+- Ricostruzione debounced su `changed`, `resolve`, `resolved` e sui `vault`
+  `create` / `delete` / `rename`.
+- Durante un batch gli eventi sono soppressi e l'albero si riallinea dai dati
+  del journal.
+
+### Rimozioni
+
+- `scannerExcludeFolders`, `isScannerExcluded` (`src/settings.ts:170`),
+  `normalizeFolders`, `parseFolderList`: il confine di scope è la foresta, le
+  eccezioni verranno gestite dalle interfacce.
+- `scannerTargets` e il tipo `ScannerTargets` (`src/settings.ts:48`): in una
+  foresta non si possono nascondere né i template (scheletro) né le note
+  (foglie).
+- `ScannerABC` con `AllertLevel` e il render piatto.
+- `CoherenceScanner` e `TemplateCoherenceScanner` come classi: la logica resta
+  in `mapOperations` / `conformance`.
+
+### Impatto sul codice
+
+- `src/core/forest.ts` (nuovo, puro): derivazione della foresta da path + lookup
+  del template, local root, ordinamento, badge, conteggi, scope dei verbi.
+- `src/core/journal.ts` (nuovo, puro): entry, internment, budget, eviction,
+  veto, preflight del rewind, diff delle divergenze.
+- `src/core/templateAPI.ts`: `reconformFile` torna
+  `{before, after, changed}` mantenendo un unico entry point; helper per il
+  batch, che espone anche il dry run.
+- `src/core/reconformHistory.ts`: da stack autonomo a vista filtrata sul
+  journal; `push` porta `origin`.
+- `src/features/metadataPanel.ts`: `resetCursor` al posto di `clearHistory`,
+  push con `origin: "panel"`, affordance `Open cascade in scanner`.
+- `src/features/dashboard/` (nuova, sostituisce `src/scanner/`): modal, tab,
+  albero, menu `⋯`, card di history, card di errore, progress line.
+- `src/settings.ts`: rimozione dei campi e dei tipi elencati sopra.
+- `main.ts`: import della dashboard, icona ribbon (`git-fork`, con fallback via
+  `setIconSafe`) e comando `Open Cascade Templates`. Il comando è l'eccezione
+  esplicita al vincolo "nessun comando in palette per ora" di `PROJECT.md` §12.
+- `styles.css`: tab, righe dell'albero, indentation, progress line, card.
+- `README.md`: lessico della foresta, `ok` = insieme di chiavi, verbi e gate,
+  history di sessione, rimozione dei due settings.
+- `PROJECT.md` §11 e §14 a lavoro concluso (la feature non si anticipa).
+
+### Test
+
+La suite è pure-core: journal, forest e dry run devono essere funzioni pure con
+l'IO iniettato.
+
+- `forest`: derivazione, local root vs sotto-cascata, ordinamento per path,
+  badge aggregato, conteggi per scope, note fuori cascata, note senza
+  frontmatter.
+- `journal`: target state per file, chiavi estranee preservate, eviction FIFO,
+  veto, internment, preflight con divergenze, rewind che attraversa una
+  divergenza, file spariti.
+- `dry run`: conteggio dei soli file che cambiano, stima di peso, rilevamento
+  `<% %>`.
+- Fixture come struttura di path sintetica, senza file system reale.
+
+### Criteri di completamento
+
+- `npm run build`, `npm run lint`, `npm test` verdi.
+- Le tre tab rispettano i counter e i disabilitati; `Cascades` è read-only.
+- `Update` sempre disponibile; `Align` bloccato su catena non sound, con motivo
+  visibile su riga e gruppo.
+- `Fix all` esegue le tre fasi, si ferma su errore, e lascia tre card
+  raggruppate.
+- Journal: undo, rewind con conferma, eviction visibile, fallimento parziale con
+  retry, file spariti saltati con avviso.
+- Pannello: Back disabilitato con motivo invece di sparire; cursore che si
+  resetta; `Open cascade in scanner`.
+- Schermata di indicizzazione solo quando serve, con uscita al timeout.
+- Verifiche manuali (resa desktop/mobile, tema chiaro/scuro, long-press/`⋯`,
+  indentazione profonda, animazione con `prefers-reduced-motion`) tracciate in
+  `YOUDO.md`.
+- README e PROJECT.md aggiornati; voce spostata in `PROJECT.md` e rimossa da
+  `FEATURES.md`.
+
+### Aperti
+
+- Budget esatto da tarare su una misura reale; la soglia del veto è
+  `budget / 2`.
+- Nome definitivo del comando (`Open Cascade Templates`) e conferma dell'icona
+  ribbon.
+- Se il journal debba sopravvivere al reload: sarebbe una feature separata,
+  perché al reload ogni entry va riverificata chiave per chiave.
+- Se serva un `Update all` unico che unisca template e note: oggi è escluso dal
+  batch omogeneo.
+- Se l'errore di esecuzione debba anche essere persistito, o restare di
+  sessione come la history.
+
 ## Voce di menu per creare il template di cartella
 
 Stato: idea.
@@ -94,8 +500,7 @@ Lessico:
 - **nota-interfaccia**: una qualsiasi nota o template linkato da
   `ct-interfaces`;
 - **nota ricevente**: il file che dichiara `ct-interfaces`;
-- **dichiarazione**: il valore della prop `ct-interfaces`, cioè l'array di
-  link;
+- **dichiarazione**: il valore della prop `ct-interfaces`, cioè l'array di link;
 - **riferimento**: la mappa di proprietà contro cui si confronta la nota;
 - **materializzazione**: la scrittura delle chiavi dell'interfaccia nel
   frontmatter della nota ricevente.
