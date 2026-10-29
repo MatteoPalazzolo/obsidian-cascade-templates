@@ -28,8 +28,8 @@ di ricevere aggiornamenti.
   1.6 → 1.13.
 - Tipi dev a `obsidian@~1.13.0` (non `latest`, non `^`): il floor della feature,
   non l'ultima pubblicazione.
-- Nessun fallback di compatibilità sotto 1.13: il percorso duale B della
-  feature «Settings UI» perde senso con questo floor.
+- Nessun fallback di compatibilità sotto 1.13: la feature «Settings UI» resta
+  dichiarativa e non tiene `display()` come percorso parallelo.
 
 ### Impatto sul codice
 
@@ -40,7 +40,8 @@ di ricevere aggiornamenti.
   (`scripts/version-bump.mjs`).
 - `eslint.config.mts`: la regola
   `obsidianmd/settings-tab/prefer-setting-definitions` è disattivata con
-  motivazione legata al floor 1.5; con 1.13 l'override va rimosso o riscritto.
+  motivazione legata al floor 1.5; con 1.13 e la resa dichiarativa l'override e
+  il commento vanno rimossi.
 - `main.ts`: verificare se il commento `eslint-disable` sull'`onload()`
   asincrono serve ancora con i tipi 1.13.
 - `README.md`: aggiungere il requisito di versione (oggi non esiste una
@@ -52,8 +53,9 @@ di ricevere aggiornamenti.
 ### Verifiche da fare al bump
 
 - Che `obsidian@1.13.0` esista su npm e che i tipi contengano
-  `getSettingDefinitions()`, `SettingGroup` e — se presenti —
-  `app.loadLocalStorage` / `saveLocalStorage`.
+  `getSettingDefinitions()`, `getControlValue()` / `setControlValue()`,
+  `refreshDomState()` e — se presenti — `app.loadLocalStorage` /
+  `saveLocalStorage`.
 - Che il modal fornisca da solo la X di chiusura e i contenitori nativi: se sì,
   la struttura del modal di consenso non va replicata a mano.
 - Che nessuna API usata dal plugin sia stata rimossa o deprecata tra 1.5 e
@@ -980,74 +982,89 @@ Aperti:
 
 ## Settings UI conforme al redesign di Obsidian
 
-Stato: idea — baseline decisa (1.13.0, vedi «Baseline Obsidian 1.13.0»);
-restano da riformulare A/B/C e l'ordine rispetto a Interfaces.
+Stato: idea — decisione presa: solo API dichiarativa (`getSettingDefinitions()`),
+`display()` rimosso, floor 1.13.0. Restano da decidere l'ordine rispetto a
+«Bridge Templater opt-in» e a Interfaces.
 
 Perché: Obsidian ha ridisegnato le impostazioni (header della tab, poi una card
-unica con le righe separate da hairline) e dalla 1.13 i plugin possono
-descrivere la tab in modo dichiarativo, entrando anche nella ricerca globale
-delle impostazioni. Oggi la tab è una lista piatta di `new Setting(containerEl)`
-in `src/settings.ts` e resta visivamente indietro rispetto alle tab core.
-L'intervento è solo di struttura e resa: nessun cambio di comportamento, di
+unica con le righe separate da hairline) e dalla 1.13 i plugin descrivono la tab
+in modo dichiarativo, entrando anche nella ricerca globale delle impostazioni.
+Oggi la tab è una lista piatta di `new Setting(containerEl)`
+(`src/settings.ts:233`) e resta visivamente indietro rispetto alle tab core.
+L'intervento è di struttura e resa: nessun cambio di comportamento, di
 persistenza o del modello di settings.
 
-### Le due API
+### Decisione: una sola API, quella dichiarativa
 
-- **`SettingGroup`** (Obsidian 1.11.0): resa imperativa del blocco con heading e
-  separatori, usabile dentro `display()`. Non dà ricerca globale, liste o
-  sub-pages. Da 1.11 c'è anche `SettingTab.icon` per la sidebar.
-- **`getSettingDefinitions()`** (Obsidian 1.13.0): API dichiarativa completa.
-  Obsidian renderizza, indicizza per la ricerca globale, salva da solo e
-  gestisce `visible` / `disabled` / `validate`, gruppi, liste e sub-pages.
-  `display()` viene bypassato quando il metodo restituisce un array non vuoto.
-  `control.key` normalmente legge `this.plugin.settings[key]`; il plugin ha uno
-  store module-level, quindi vanno sovrascritti `getControlValue()` e
-  `setControlValue()` per delegare a `getSettings()` / `updateSettings()`.
-  La riga del bridge Templater (descrizione dinamica + pulsante) diventa un
-  `render` callback. `getSettingDefinitions()` viene chiamato anche alla
-  registrazione per indicizzare la ricerca: deve restare economico.
+- `getSettingDefinitions()` è l'unica implementazione: la tab **descrive** le
+  righe invece di costruirle. `display()` viene eliminato, insieme all'import di
+  `Setting` dove non serve più un `render`.
+- Nessun ramo imperativo di riserva e nessun uso di `SettingGroup`: i gruppi
+  arrivano da `{ type: "group", heading, items }`, non da una resa manuale del
+  blocco. `SettingGroup` resta un'API che conosciamo e non usiamo.
+- Nessun fallback sotto 1.13: `minAppVersion` sale a 1.13.0 (vedi «Baseline
+  Obsidian 1.13.0»), che è prerequisito e va eseguito per primo. Il taglio degli
+  utenti 1.11/1.12 è accettato e dichiarato in README e note di release.
+- Il percorso duale (tenere `display()` accanto alle definizioni) è escluso: due
+  implementazioni da tenere allineate sono esattamente il costo che questa
+  decisione elimina.
+- Guadagno oltre la resa: ogni riga con un `name` stabile entra nella ricerca
+  globale delle impostazioni senza codice aggiuntivo.
 
-### Percorsi possibili
+### Contratto dell'API
 
-| | Implementazione | `minAppVersion` | Costo |
-|---|---|---|---|
-| A | solo `SettingGroup` in `display()`, con fallback piatto sotto 1.11 | resta 1.5.0 | resa nuova, niente ricerca globale |
-| B | dichiarativo + `display()` legacy (dual support) | resta 1.5.0 | due implementazioni da tenere allineate |
-| C | solo dichiarativo, `display()` rimosso | sale a 1.13.0 | una sola implementazione, taglia gli utenti < 1.13 |
+Fatti documentati che vincolano l'implementazione:
 
-La guida ufficiale consiglia C quando si può alzare il minimo, B quando
-esiste una base utenti su versioni precedenti. A ha senso solo se interessa la
-resa e non l'integrazione con la ricerca.
+- Un `control` con `key` legge e scrive una proprietà di `this.plugin.settings`
+  e Obsidian chiama `saveData()` da solo. Il nostro store è module-level
+  (`getSettings()` / `updateSettings()`, `src/settings.ts:179`), quindi
+  `getControlValue()` e `setControlValue()` vanno sovrascritti per delegare a
+  `getSettings()` / `updateSettings()`. Sovrascrivere `setControlValue()`
+  sostituisce anche il salvataggio automatico: la persistenza la fa
+  `updateSettings`, che già notifica i pannelli (D3).
+- `control`, `render` e `action` sono mutuamente esclusivi: TypeScript rifiuta
+  più di uno sulla stessa definizione.
+- `render` **non** salva da solo: ogni modifica fatta lì passa da
+  `updateSettings`.
+- `getSettingDefinitions()` gira a ogni `update()` e una volta alla
+  registrazione della tab (indice della ricerca): resta economico, nessun I/O,
+  nessun probe. Il probe Templater appartiene al `render`, che gira solo quando
+  la riga viene disegnata.
+- `visible` / `disabled` accettano un booleano o un predicato e si rivalutano a
+  ogni refresh del DOM; `this.refreshDomState()` basta per i predicati, mentre
+  per aggiungere o togliere definizioni serve `this.update()`. Non si chiama
+  `display()` per ridisegnare: con le definizioni presenti viene bypassato.
+- `desc` accetta una stringa o un `DocumentFragment`: se serve una descrizione
+  ricca la si costruisce con `createFragment(...)`, non con HTML a mano.
+- `validate` è un gate di UI, non un invariante: non riscrive il valore
+  memorizzato. `normalizeSettings` resta l'unico posto che ripara i dati.
 
-> Nota: con la baseline 1.13.0 decisa (vedi «Baseline Obsidian 1.13.0»), B non
-> è più un'opzione e i costi di A e C vanno riletti senza il vincolo 1.5.
+### Mappatura delle setting attuali
 
-### Dipendenze e ordine
+| Riga | Oggi | Dichiarativa |
+|---|---|---|
+| Template file name | `addText` + `updateSettings` | `control: {type: "text", key: "templateBasename"}` |
+| Apply the template to new files | `addDropdown` | `control: {type: "dropdown", key: "autoApply", options}` |
+| Evaluate template expressions in notes | `addToggle` + `setDisabled` | `control: {type: "toggle", key: "evaluateTemplaterInNotes", disabled}` |
+| Templater bridge test | `addButton` + `setDesc` mutato | `render`: `addButton` e descrizione riscritta sulla row |
+| Show the properties toolbar | `addDropdown` | `control: {type: "dropdown", key: "panelVisibility", options}` |
 
-- I tipi installati sono `obsidian@1.5.7` e non contengono né `SettingGroup` né
-  `getSettingDefinitions`. Il bump va fatto a `~1.13.0` (non `latest` e non
-  `^1.13.0`): i tipi devono restare allineati al floor della feature, non
-  all'ultima versione. `npm install` va lanciato da Windows: in sandbox il
-  registry è bloccato.
-- `minAppVersion` è `1.5.0` in `manifest.json`; la baseline decisa è 1.13.0
-  (vedi «Baseline Obsidian 1.13.0»), quindi B perde senso e A va inteso come
-  resa imperativa con `SettingGroup` a floor 1.13.
-- **Interfaces aggiunge una setting.** Se la resa resta imperativa (`display()`
-  + `SettingGroup`), conviene migrare la UI dopo Interfaces: il toggle nasce
-  insieme agli altri e viene convertito una volta sola. Con la resa
-  dichiarativa l'ordine è indifferente.
-- La regola `obsidianmd/settings-tab/prefer-setting-definitions` è disattivata
-  in `eslint.config.mts` con la motivazione legata a `minAppVersion` 1.5:
-  adottando l'API dichiarativa il commento va aggiornato o l'override rimosso.
-  `require-display` e `no-deprecated-display` sono coerenti con entrambe le
-  rese possibili.
+- La riga del bridge è l'unica che non si esprime con un `control`: descrizione
+  dinamica più pulsante, quindi `render`. Il testo mutato dal click resta locale
+  alla row, non è una setting e non va persistito.
+- Il toggle Templater resta `disabled` quando Templater non è disponibile; il
+  predicato viene rivalutato ai refresh del DOM, non a ogni tick.
+- Questa riga cambia forma con la feature «Bridge Templater opt-in»: lì il flag
+  esce dal modello, il toggle diventa un `render` con modal di consenso e gli
+  stati del probe. Se il bridge passa prima, questa feature converte quella riga
+  una volta sola; se passa dopo, la converte qui e il bridge la riscrive.
+  L'ordine va deciso (vedi Aperti).
 
 ### Resa e contenuti
 
 - Nessun heading con il nome del plugin o "Settings": la tab è già intitolata
-  nella sidebar. Heading solo quando esistono almeno due sezioni distinte;
-  con le setting attuali basta un blocco unico, i gruppi arriveranno con
-  Interfaces.
+  nella sidebar. Heading solo quando esistono almeno due sezioni distinte; con
+  le setting attuali basta un blocco unico, senza `type: "group"`.
 - Le descrizioni attuali di auto-apply e Templater sono lunghe: la style guide
   chiede una frase, con il dettaglio spostato nel README. È una decisione di
   contenuto, non solo di CSS.
@@ -1056,42 +1073,53 @@ resa e non l'integrazione con la ricerca.
 
 ### Impatto sul codice
 
-- `package.json` / `package-lock.json`: bump dei tipi a `~1.13.0`.
-- `src/settings.ts`: `getSettingDefinitions()`, `getControlValue()` /
-  `setControlValue()`, bridge test in `render`, `display()` legacy o rimosso.
-- `manifest.json`: solo per C.
-- `eslint.config.mts`: override e commento della regola sulle settings.
+- `package.json` / `package-lock.json`: `obsidian` → `~1.13.0`. `npm install`
+  va lanciato da Windows: in sandbox il registry è bloccato (403).
+- `manifest.json`: `minAppVersion` → `1.13.0`. `versions.json` lo riscrive
+  `npm version` leggendo il manifest, non a mano.
+- `src/settings.ts`: `display()` → `getSettingDefinitions()`; override di
+  `getControlValue()` / `setControlValue()`; bridge test in `render`; import di
+  `Setting` solo dove serve un `render`.
+- `eslint.config.mts`: la regola
+  `obsidianmd/settings-tab/prefer-setting-definitions` è disattivata perché il
+  floor era 1.5 (`eslint.config.mts:50`): con il floor 1.13 l'override e il
+  commento vanno rimossi, non riscritti.
 - `main.ts`: verificare se il commento `eslint-disable` su `onload()` asincrono
   serve ancora con i tipi 1.13.
-- `README.md`, `PROJECT.md`, `YOUDO.md`: documentazione e check visivi.
+- `README.md`: requisito di versione e descrizioni accorciate. `PROJECT.md` §9 a
+  lavoro concluso. `YOUDO.md`: check visivi.
 
 ### Criteri di completamento
 
-- `npm run build`, `npm run lint`, `npm test` verdi.
-- Persistenza, refresh dei pannelli e bridge test invariati.
-- Se B/C: le impostazioni compaiono nella ricerca globale.
-- Resa verificata su desktop e mobile, light e dark, e — se B — anche su una
-  versione < 1.13.
+- `npm run build`, `npm run lint`, `npm test` verdi, con la regola eslint sulle
+  settings attiva.
+- In `src/settings.ts` non restano né `display()` né `new Setting(containerEl)`.
+- Persistenza, refresh dei pannelli e bridge test invariati; ogni riga compare
+  nella ricerca globale delle impostazioni.
+- Il toggle Templater resta disabilitato quando Templater non c'è, e la
+  descrizione continua a dirlo.
+- Resa verificata su desktop e mobile, light e dark (check in `YOUDO.md`).
 - README e PROJECT.md aggiornati; voce spostata in `PROJECT.md` e rimossa da
   `FEATURES.md`.
 
 ### Aperti
 
-- Scelta tra dichiarativo e imperativo con floor 1.13: A/B/C vanno riformulati
-  (B non ha più senso, A non «resta a 1.5», C non «taglia gli utenti < 1.13»).
-- Verificare che `obsidian@1.13.0` esista su npm e che i tipi contengano
-  davvero `getSettingDefinitions()`: la reference API online non lo elenca
-  ancora, lo documenta solo la guida.
+- Ordine rispetto a «Bridge Templater opt-in» e a Interfaces: entrambe toccano
+  la stessa tab, quindi conviene migrare subito prima o subito dopo una sola
+  delle due.
 - Raggruppamenti definitivi: blocco unico oppure gruppi Template / Templater /
-  Toolbar.
+  Toolbar (dipende da Interfaces, che aggiunge una setting).
 - Se accorciare le descrizioni e linkare il README.
-- Se impostare `this.icon` sulla tab.
-- Se usare `SettingGroup` anche nel `display()` legacy per coprire 1.11–1.12.
+- Se impostare `this.icon` sulla tab (oggi la tab della sidebar non ne ha).
+- Verificare che `obsidian@1.13.0` esista su npm e che i tipi contengano
+  `getSettingDefinitions()`, `getControlValue()` / `setControlValue()` e
+  `refreshDomState()`: la reference API online non lo elenca ancora, lo
+  documenta la guida.
 
 Riferimenti:
 - [Settings](https://docs.obsidian.md/Plugins/User+interface/Settings)
 - [Migrate to declarative settings](https://docs.obsidian.md/plugins/guides/migrate-declarative-settings)
-- [SettingGroup](https://docs.obsidian.md/Reference/TypeScript+API/SettingGroup)
+- [PluginSettingTab](https://docs.obsidian.md/Reference/TypeScript+API/PluginSettingTab)
 
 ## Bridge Templater opt-in con consenso per dispositivo
 
@@ -1270,9 +1298,9 @@ Tre stati distinti, senza I/O aggiuntivo:
 
 ### Aperti
 
-- Se la descrizione dichiarativa di 1.13 supporta contenuto ricco: se solo
-  stringa, il `mod-warning` va reso con un `render` dedicato (o si accetta
-  testo semplice, con il modal come segnale forte).
+- Il `mod-warning` della riga: `desc` accetta anche un `DocumentFragment`
+  (`createFragment`), quindi il testo può restare in un `control`; va deciso se
+  basta il testo semplice con il modal come segnale forte.
 - Se restringere il reconform alla sola template side (oggi valuta anche i
   `<%` già presenti nella nota), allineandolo all'auto-apply.
 - Testo definitivo della Notice una-tantum.
