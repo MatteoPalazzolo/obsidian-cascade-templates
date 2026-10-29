@@ -98,7 +98,9 @@ redesign sostituisce il Modal con una dashboard a tre tab (struttura, problemi,
 history), espone i verbi di conformità con i gate corretti e introduce un
 journal di sessione che rende reversibili anche le operazioni globali. Senza il
 journal, `Align notes` su tutto il vault sarebbe esattamente l'automazione a
-cascata che il prodotto dichiara di non essere.
+cascata che il prodotto dichiara di non essere. Il journal è globale e riguarda
+solo le operazioni della dashboard; il Back del pannello resta una history
+locale alla nota, volatile e indipendente (vedi Due livelli di history).
 
 ### Lessico
 
@@ -154,17 +156,22 @@ cascata che il prodotto dichiara di non essere.
 
 Titolo `Cascade Templates`. Non è più uno "scanner": è la dashboard del plugin.
 
-- Header condiviso dai tre tab: `Fix all (N)` centrato e `undo-2`.
+- Header condiviso dai tre tab: `Fix all (N)` centrato e `undo-2`
+  (`Undo last batch`, tooltip: ultima operazione della dashboard), disabilitato
+  quando il journal è vuoto.
 - Tab: `Cascades (R) | Issues (N) | History (N)`.
   - `Cascades (R)`: `R` = numero di local root.
   - `Issues (N)`: `N` = file non conformi (le righe di contesto non contano).
   - `History (N)`: `N` = entry ripristinabili.
   - `Fix all (N)` mostra lo stesso `N` di `Issues`, altrimenti nello stesso
     header compaiono due cifre diverse e sembra rotto.
-  - `Issues` e `History` sono disabilitati quando il loro counter è 0.
+  - `Issues` e `History` sono disabilitati quando il loro counter è 0. Se il
+    counter scende a 0 mentre il tab è attivo, il tab resta attivo e mostra
+    l'empty state in place: niente navigazione forzata.
 - Si apre su `Cascades`.
 - Durante un batch o un rewind: tab, undo e chiusura del modal bloccati (stesso
-  mutex).
+  mutex). `Esc` non chiude il modal: è l'eccezione esplicita alla regola di
+  tastiera. Un cancel per i batch lunghi è un aperto, non una promessa.
 - Progresso: linea indeterminata in cima al contenuto, `--interactive-accent`,
   2–3 px, animazione in loop, statica e attenuata con `prefers-reduced-motion`.
   Accanto un label testuale (`Fixing 2/3 · Updating notes`): la linea da sola
@@ -206,21 +213,41 @@ Titolo `Cascade Templates`. Non è più uno "scanner": è la dashboard del plugi
   una card con il dettaglio e una `×` per il dismiss. **L'errore non è uno stato
   di conformità**: non entra nel badge, non ha un colore nella gerarchia, e
   sparisce al dismiss o al primo retry riuscito.
+- Empty state a 0: `No issues`. Se il tab è già attivo quando il counter scende
+  a 0, il contenuto viene sostituito dall'empty state e il focus resta lì.
 
 #### Tab `History`
 
-- Una card orizzontale per entry, in ordine cronologico decrescente:
-  verbo, timestamp, `Templates modified: N · Notes modified: N · Folders
-  involved: N`, e `Restore to this snapshot`.
-- Niente log, niente elenco file, niente errori: la history è un riassunto.
-  I dettagli di esecuzione stanno nella card di errore di `Issues`.
+- Solo operazioni del journal, cioè della dashboard: le pressioni del pannello
+  non compaiono mai (vedi Due livelli di history).
+- Una card orizzontale per entry, in ordine cronologico decrescente: verbo,
+  timestamp, `Templates modified: N · Notes modified: N · Folders involved: N`,
+  e il verbo di annullamento.
+- Niente log, niente elenco file: la history è un riassunto. I dettagli
+  (`Undo 3 operations · 38 files · 2 conflicts`) stanno nella conferma, non
+  nella card.
 - `Folders involved` = cartelle distinte che contengono almeno un file
   modificato.
+- **Il verbo dipende dalla posizione.** Sulla card in cima è `Undo`, identico a
+  `Undo last batch` dell'header. Su una card più vecchia è
+  `Undo this and N newer operations`: annulla quella entry e tutte le più
+  recenti (vedi Journal). La conferma dichiara la portata con i numeri presi dal
+  preflight: entry, file, cartelle, conflitti, file spariti.
 - Le entry prodotte da `Fix all` portano `routine: {id, step, total}` e sono
-  raggruppate sotto un header `Fix all · 3 operations`. Restano espansi; ognuna
-  resta ripristinabile singolarmente. Se la macro si è fermata:
-  `Fix all · stopped after phase 1`.
-- `Restore to this snapshot` annulla tutte le entry più recenti (vedi Journal).
+  raggruppate sotto un header **derivato** dalle entry sopravvissute:
+  `Fix all · 3 operations`, `Fix all · 2 of 3 operations`, `Fix all · stopped
+  after phase 1`. Con una sola entry superstite il gruppo si dissolve in card
+  normale. Ogni entry resta ripristinabile singolarmente.
+- **Errori.** Un rewind fallito non è un errore di conformità e non ha casa in
+  `Issues`: compare come card di errore in testa a `History`, con fatti/non
+  fatti, entry non consumata e retry. Sparisce al dismiss o al primo retry
+  riuscito.
+- **Counter a 0 mentre il tab è attivo.** Il tab mostra un empty state in place
+  (`Nothing to restore`); non si viene portati altrove e il focus resta nel
+  contenuto. Il counter a 0 impedisce solo l'ingresso dagli altri tab.
+- Empty state e tooltip del tab dicono che si tratta di operazioni della
+  dashboard: chi ha passi di Back nel pannello non deve leggere `History (0)`
+  come un bug.
 
 ### Verbi
 
@@ -231,8 +258,8 @@ Titolo `Cascade Templates`. Non è più uno "scanner": è la dashboard del plugi
 | `Update note` / `Update notes` | riga nota / cartella, local root, `All cascades` | solo note | nessuno |
 | `Align note` / `Align notes` | riga nota / cartella, local root, `All cascades` | solo note | catena sound |
 | `Fix all` | header del modal | template, poi note, poi note | macro, vedi sotto |
-| `Undo last operation` | header del modal | l'entry in cima | conferma se ci sono divergenze |
-| `Restore to this snapshot` | card della history | tutte le entry più recenti | conferma con diff |
+| `Undo last batch` | header del modal | l'entry in cima del journal | conferma se ci sono divergenze |
+| `Undo this and N newer operations` | card della history (non la prima) | quella entry e tutte le più recenti | conferma con numeri e diff |
 
 - Non esistono: `Align template`, `Reset`, `Update` combinato template + note,
   `Rescan`.
@@ -248,13 +275,14 @@ Titolo `Cascade Templates`. Non è più uno "scanner": è la dashboard del plugi
 
 ### Batch
 
-- Un click = un batch omogeneo (stesso tipo di file, stesso verbo) = una entry
-  del journal.
+- Un click che scrive = un batch omogeneo (stesso tipo di file, stesso verbo) =
+  una entry del journal. Se il dry run conta 0 file cambiati il click non
+  produce entry e la UI lo dice (`Nothing to do`).
 - **Dry run** prima di eseguire: calcola il target di ogni nodo con le stesse
   funzioni pure del batch, confronta con il corrente e conta solo i file che
   cambierebbero davvero. La stessa passata produce il numero per la conferma, la
-  stima di peso dell'entry e il rilevamento di `<% %>` nei riferimenti. Nessuna
-  scrittura, nessun accesso al disco: solo mappe dalla cache.
+  stima di peso dell'operazione e il rilevamento di `<% %>` nei riferimenti.
+  Nessuna scrittura, nessun accesso al disco: solo mappe dalla cache.
 - Conferma **per scope**: bulk su cartella, local root o `All cascades` sempre;
   azione su singolo file mai.
 - Esecuzione sequenziale in ordine deterministico (superficiale → profondo).
@@ -263,7 +291,7 @@ Titolo `Cascade Templates`. Non è più uno "scanner": è la dashboard del plugi
     fallite;
   - **template**: catena di dipendenza (il target di un figlio dipende dallo
     stato del padre) → si ferma il sottoalbero, i fratelli proseguono.
-  In entrambi i casi l'entry resta nel journal con `after` solo per i file
+  In entrambi i casi l'entry resta nel journal con `changes` solo per i file
   effettivamente scritti e `skipped` per gli altri; un retry riparte dai
   mancanti, ed è sicuro perché ogni scrittura è idempotente (target state, non
   delta).
@@ -272,8 +300,8 @@ Titolo `Cascade Templates`. Non è più uno "scanner": è la dashboard del plugi
 
 ### `Fix all`
 
-- **Macro, non verbo nuovo.** Esegue tre operazioni in sequenza, tre entry
-  distinte: `Update templates` → `Update notes` → `Align notes`.
+- **Macro, non verbo nuovo.** Esegue tre operazioni in sequenza, con una entry
+  per fase che scrive: `Update templates` → `Update notes` → `Align notes`.
 - L'ordine è obbligato: `Update templates` cambia gli insiemi di riferimento,
   quindi le note possono diventare `missing` (fase 2) e le `extra` possono
   sparire (fase 3). Dopo la fase 1 la catena è sound per costruzione, quindi il
@@ -293,41 +321,94 @@ Titolo `Cascade Templates`. Non è più uno "scanner": è la dashboard del plugi
   distruttive), icona `sparkles`, label `Fix all (12)`, disabilitato a 0 con
   tooltip `No issues to fix`.
 
+### Due livelli di history
+
+Il plugin ha due storie, con unità, scope e vita diverse. Non si leggono e non
+si scrivono a vicenda: nessuna delle due è una vista dell'altra.
+
+| | Journal globale | History della nota |
+|---|---|---|
+| Chi lo produce | operazioni del tab `Issues`, batch o singolo file | una pressione del pulsante a fasi nel pannello |
+| Unità | un'operazione | una pressione, con la sua fase |
+| Scope | sessione del plugin | una per nota, condivisa dalle tab che mostrano quella nota |
+| Memoria | budget, internment, eviction FIFO | nessun budget: stack corto, limitato alla sessione |
+| Fine | `onunload`, eviction | scrittura esterna sul frontmatter, nessuna tab che mostra la nota, stack svuotato |
+| Superficie | tab `History` | `Back` del pannello |
+
+- Il journal **non** registra le pressioni del pannello (`origin: "batch" |
+  "fix-all"`); il Back **non** consuma entry, **non** fa scendere `History (N)`
+  e **non** è influenzato da eviction, undo o restore.
+- Il file è la risorsa condivisa: **qualsiasi scrittura sul frontmatter che non
+  venga dal pulsante di quella nota uccide la sessione locale**, comprese le
+  operazioni della dashboard. La scrittura globale ha priorità assoluta: una
+  pressione che arriva durante un batch o un rewind **decade**, non viene
+  accodata.
+- La sessione è **per nota, non per view**: due tab sulla stessa nota
+  condividono stack, cursore e stato del pulsante e si aggiornano insieme.
+  Editare la nota 1 non tocca la sessione della nota 2.
+- Le scritture del pulsante non chiudono la sessione: è l'unica eccezione, ed è
+  la ragione per cui lo stack può esistere. L'origine di una scrittura si
+  distingue **per path**, non per view, perché l'evento `changed` è unico per
+  file.
+- Una nota che non è più visibile in nessuna tab perde la sessione: riaprirla dà
+  sempre una history vuota. L'insieme delle note visibili si **deriva** dalle
+  view aperte, non si conta con un reference counter.
+- Il cursore di fase appartiene alla sessione, quindi è per nota e non per view,
+  e torna alla fase base quando la sessione finisce.
+
 ### Journal
 
 - Vive nel plugin, non nel modal: chiudere e riaprire la dashboard conserva la
-  history. Scope = sessione, muore con `onunload`.
-- Unifica le scritture di dashboard e pannello Properties:
-  `origin: "scanner" | "panel" | "fix-all"`.
-- Entry: `{id, origin, at, routine?, files: [{path, before, after, skipped?}]}`.
-  `before` è la mappa **completa**; `after` solo le chiavi divergenti.
+  history. Scope = sessione, muore con `onunload`. Riguarda **solo** le
+  operazioni della dashboard: il pannello ha la sua history locale (vedi Due
+  livelli di history).
+- Entry: `{id, origin, at, routine?, files: FileChange[]}` con
+  `origin: "batch" | "fix-all"`. Per file:
+  `{path, before, changes, skipped?}`.
+  - `before` è la mappa **completa**: è il target quando la entry è la più
+    vecchia del range, e serve per le chiavi che entry successive del range
+    toccano ma questa no.
+  - `changes` è la lista **autorevole** delle chiavi toccate:
+    `[{key, after}]`, dove `after` è il nuovo valore oppure `REMOVED`. Una
+    chiave assente da `changes` non è stata toccata. La rimozione è uno stato
+    esplicito: senza, "invariata" e "cancellata da `Align`" sarebbero
+    indistinguibili.
+  - `skipped` = file non scritto: nessuna change, nessun ripristino.
+  - `touched(file) = keys(changes)`: è questo insieme, non la mappa dei valori,
+    a definire cosa il restore sovrascrive.
 - Modello a **target state**, non a delta: un edit manuale non crea buchi,
   perché viene assorbito dal `before` della entry successiva che tocca quel
   file.
-- `Undo last operation` = pop dell'entry in cima. `Restore to this snapshot` =
-  pop di tutta la coda più recente, applicando per ogni file il target preso
-  dalla **entry più vecchia del range che l'ha toccato**. Non si applicano le
-  entry in ordine: si scrive direttamente lo stato finale.
+- `Undo last batch` = pop dell'entry in cima. `Undo this and N newer
+  operations` = pop di tutta la coda più recente, applicando per ogni chiave
+  toccata nel range il valore che aveva nel `before` della **entry più vecchia
+  del range che ha toccato il file**. Non si applicano le entry in ordine: si
+  scrive direttamente lo stato finale.
 - Il restore è **scoped alle sole chiavi toccate**: le chiavi estranee
-  sopravvivono sempre; le chiavi toccate vengono sovrascritte.
+  sopravvivono sempre; le chiavi toccate vengono riportate al valore che avevano
+  all'inizio del range, o rimosse se allora non esistevano.
 - Conflitti: preflight che ripete il rewind in memoria. Una divergenza su una
   chiave toccata è un conflitto → conferma con diff
   (`file → chiave: tuo valore → ripristinato`), non abort automatico: il target
   esiste, la decisione è dell'utente. Diff per chiave fino a una soglia di file
-  (10), poi aggregato per file con espansione.
+  (10), poi aggregato per file con espansione. **Entrano nel diff solo i file
+  che richiedono una scrittura**: un file già al target non è un conflitto, e
+  vale anche per il retry dopo un rewind parziale.
 - File cancellati o rinominati tra l'operazione e il rewind: **skip con avviso**
   nel preflight (`2 files no longer exist`). Non è un'applicazione parziale: non
   c'è più nessuno stato da ripristinare.
 - Fallimento parziale durante il rewind: stop immediato, **entry non
-  consumata**, riporto di fatti/non fatti, retry idempotente.
-- Non atomicità: N `process` sequenziali, nessuna transazione. UI congelata,
-  eventi `changed` soppressi durante il batch, un solo ricalcolo finale dai dati
-  del journal. Un quit a metà lascia uno stato parziale non tracciato: rischio
-  accettato e dichiarato in UI.
+  consumata**, riporto di fatti/non fatti, retry idempotente. I file già al
+  target vengono saltati, non segnalati come divergenze.
+- Non atomicità: N `process` sequenziali, nessuna transazione. UI congelata, gli
+  eventi `changed` generati dal batch sono **ignorati** dal plugin, un solo
+  ricalcolo finale dalla `metadataCache`: dopo skip, fallimenti ed eviction il
+  journal non è source of truth della foresta. Un quit a metà lascia uno stato
+  parziale non tracciato: rischio accettato e dichiarato in UI.
 - Divergenze: **calcolate on demand**, confrontando il valore corrente con
-  l'`after` dell'ultima entry che ha scritto quella chiave. Non si traccia
-  nulla; l'unica cosa che viene dall'evento `changed` è il timestamp
-  (`changed manually at 14:31`).
+  l'`after` dell'ultima entry che ha scritto quella chiave (`REMOVED` compreso).
+  Non si traccia nulla; l'unica cosa che viene dall'evento `changed` è il
+  timestamp (`changed manually at 14:31`).
 - Un file non indicizzato o senza frontmatter non partecipa, quindi non
   interferisce.
 
@@ -340,24 +421,46 @@ Titolo `Cascade Templates`. Non è più uno "scanner": è la dashboard del plugi
   costo, mai dal centro, nessun pinning in v1.
 - La troncatura è visibile: prima riga della history
   `N older operations are no longer restorable`.
-- Veto solo quando **una singola entry supera `budget / 2`**: dialog a due
-  bottoni, `Proceed` (tronca la history) e `Cancel`. "Procedi senza registrare"
-  non è un'opzione, equivale a troncare.
+- **L'unità di budget è l'operazione, non la entry.** Una `Fix all` produce fino
+  a tre entry: la stima è la somma delle fasi, e una routine non si rimuove mai a
+  metà. O tutta o niente: se lo spazio basta solo per una parte, si scarta la
+  routine intera e la troncatura lo dice.
+- **Operazione oversized.** Se la stima di una singola operazione supera il
+  budget, troncare non basta: la conferma di esecuzione avvisa che l'operazione
+  **non sarà annullabile**, parte solo su conferma esplicita e non viene
+  registrata. Mai un drop silenzioso.
+- Veto quando l'operazione stimata supera `budget / 2`: dialog a due bottoni,
+  `Proceed` (tronca la history e registra) e `Cancel` (non esegue). "Procedi
+  senza registrare" non è un'opzione: se lo spazio va liberato, la nuova entry
+  si registra.
+- **Il veto è sulla stima, la verifica è sul reale.** La stima viene dal dry
+  run; se l'operazione reale supera comunque soglia o budget, si applica la
+  stessa regola a posteriori: eviction dalla testa e, se non basta, scarto
+  dell'operazione intera con la troncatura visibile.
 - Budget: 8 MB su mobile, 32 MB su desktop (`Platform.isMobile`).
 
 ### Integrazione col pannello Properties
 
-- Il Back diventa una **vista filtrata sul journal** per path: non esiste più
-  uno stack separato.
-- Il cursore di fase resta per-view e **si resetta sull'edit manuale**, come
-  oggi: la sessione di reconform finisce, il journal no.
-- Severità stretta del Back: disponibile solo se tutte le chiavi scritte
-  dall'entry in cima sono ancora uguali al suo `after`. Altrimenti è disabilitato
-  con il motivo (`status changed manually at 14:31`) invece di sparire.
-- Il falso positivo attuale sparisce: una chiave estranea aggiunta a mano non
-  uccide più la sessione.
-- `clearHistory` in `src/features/metadataPanel.ts:546` diventa `resetCursor`;
-  `clear()` in `src/core/reconformHistory.ts:152` smette di distruggere l'undo.
+- Il Back resta **uno stack locale alla nota**, con il cursore di fase
+  accoppiato: nessuna vista filtrata sul journal, nessuna entry consumata.
+- La sessione è **per nota, non per view**: stack, cursore e stato del pulsante
+  sono condivisi da tutte le tab che mostrano la stessa nota e si aggiornano
+  insieme. Editare la nota 1 non tocca la sessione della nota 2.
+- La sessione muore per: prima scrittura esterna sul frontmatter (manuale, sync,
+  altro plugin, **dashboard inclusa**), nessuna tab che mostra più la nota,
+  stack svuotato da Back. Le uniche scritture che non la chiudono sono quelle
+  del pulsante stesso.
+- `Back` è abilitato se e solo se lo stack non è vuoto. Non esiste uno stato
+  "divergente con motivo": se il frontmatter è cambiato fuori dal pulsante la
+  sessione non c'è più, quindi non c'è nulla da spiegare.
+- Una chiave estranea aggiunta a mano **chiude** la sessione: è il prezzo del
+  modello a vita corta, ed è coerente con "la prima interazione col frontmatter
+  chiude il discorso". Non è un falso positivo da correggere.
+- `clearHistory` e `clear()` confluiscono in `endSession(view)`, che chiude stack
+  e cursore insieme.
+- Una pressione del pannello durante un batch o un rewind **non viene
+  accodata**: decade, perché il globale ha priorità assoluta. La scrittura del
+  pulsante non deve mai sovrascrivere quella del journal.
 - Il pannello guadagna una sola affordance: `Open cascade in scanner`, che apre
   la dashboard sul tab `Cascades`, già scoped alla cascata del file corrente.
   È anche l'entry point mobile.
@@ -379,6 +482,9 @@ Titolo `Cascade Templates`. Non è più uno "scanner": è la dashboard del plugi
 
 - Nessun hover: le azioni vivono nel menu `⋯` della riga.
 - Desktop: icone inline su hover/focus, `⋯` come fallback.
+- Card di `History` e card di errore: il verbo di annullamento è un'azione a
+  tutta larghezza sotto i numeri, non nel `⋯` (la card non è una riga
+  dell'albero); i numeri vanno a capo su due righe.
 - Tab a segmenti in stile nativo, nessun `‹ Back`.
 - Indentazione: 16 px desktop / 12 px mobile sui primi 3 livelli, metà oltre il
   4°, clampata al 40% della larghezza della riga; sotto clamp la riga mostra il
@@ -394,7 +500,10 @@ tabulazione.
 - `←`: collassa, o va al padre se già collassata;
 - `Enter`: apre il menu `⋯` della riga (non esegue il verbo primario: stesso
   modello di mobile, niente azioni distruttive da un tasto premuto per sbaglio);
-- `Esc`: chiude il menu, poi il modal.
+- `Esc`: chiude il menu, poi il modal (bloccato durante batch e rewind);
+- **Fuori dall'albero**: le card di `History` e la card di errore sono uno stop
+  di tabulazione separato; `Enter` attiva il verbo di annullamento, `Esc` chiude
+  prima il dialog di conferma.
 
 `role="treeitem"`, `aria-level`, `aria-expanded`, DOM in ordine visivo. Va fatto
 insieme al renderer, non retrofittato.
@@ -407,8 +516,8 @@ insieme al renderer, non retrofittato.
   diventa decine di migliaia di lookup per rebuild.
 - Ricostruzione debounced su `changed`, `resolve`, `resolved` e sui `vault`
   `create` / `delete` / `rename`.
-- Durante un batch gli eventi sono soppressi e l'albero si riallinea dai dati
-  del journal.
+- Durante un batch gli eventi `changed` generati dal plugin sono ignorati e
+  l'albero si riallinea dalla `metadataCache`, non dal journal.
 
 ### Rimozioni
 
@@ -426,15 +535,23 @@ insieme al renderer, non retrofittato.
 
 - `src/core/forest.ts` (nuovo, puro): derivazione della foresta da path + lookup
   del template, local root, ordinamento, badge, conteggi, scope dei verbi.
-- `src/core/journal.ts` (nuovo, puro): entry, internment, budget, eviction,
-  veto, preflight del rewind, diff delle divergenze.
-- `src/core/templateAPI.ts`: `reconformFile` torna
-  `{before, after, changed}` mantenendo un unico entry point; helper per il
-  batch, che espone anche il dry run.
-- `src/core/reconformHistory.ts`: da stack autonomo a vista filtrata sul
-  journal; `push` porta `origin`.
-- `src/features/metadataPanel.ts`: `resetCursor` al posto di `clearHistory`,
-  push con `origin: "panel"`, affordance `Open cascade in scanner`.
+- `src/core/journal.ts` (nuovo, puro): entry con `before` + `changes` e
+  `REMOVED`, internment, budget per operazione, eviction, veto, preflight del
+  rewind, diff delle divergenze.
+- `src/core/templateAPI.ts`: `reconformFile` torna `{before, changes, changed}`
+  mantenendo un unico entry point; helper per il batch, che espone anche il dry
+  run.
+- `src/core/reconformHistory.ts`: resta lo stack autonomo, con chiave = path
+  invece della view: snapshot con frontmatter, fase e chiavi scritte,
+  `endSession`, sweep debounced delle note visibili per scartare le sessioni
+  sparite. Nessun legame col journal.
+- `src/features/metadataPanel.ts`: `endSession` unifica `clearHistory` e il
+  reset del cursore, sincronizzazione dello stato del pulsante tra le tab della
+  stessa nota, Back = stack non vuoto, affordance `Open cascade in scanner`.
+- Scritture: un'unica API per path (coda seriale, ricalcolo dentro
+  `vault.process`) e token di origine depositato sul path prima del write; il
+  token `panel` non uccide la sessione, qualunque altro sì. Generation check al
+  commit: la pressione decade se la sessione è stata uccisa nel frattempo.
 - `src/features/dashboard/` (nuova, sostituisce `src/scanner/`): modal, tab,
   albero, menu `⋯`, card di history, card di errore, progress line.
 - `src/settings.ts`: rimozione dei campi e dei tipi elencati sopra.
@@ -443,40 +560,53 @@ insieme al renderer, non retrofittato.
   esplicita al vincolo "nessun comando in palette per ora" di `PROJECT.md` §12.
 - `styles.css`: tab, righe dell'albero, indentation, progress line, card.
 - `README.md`: lessico della foresta, `ok` = insieme di chiavi, verbi e gate,
-  history di sessione, rimozione dei due settings.
+  due livelli di history (journal della dashboard, Back locale alla nota),
+  rimozione dei due settings.
 - `PROJECT.md` §11 e §14 a lavoro concluso (la feature non si anticipa).
 
 ### Test
 
-La suite è pure-core: journal, forest e dry run devono essere funzioni pure con
-l'IO iniettato.
+La suite è pure-core: journal, forest, dry run e logica di sessione devono
+essere funzioni pure con l'IO iniettato (per le sessioni, l'insieme dei path
+aperti).
 
 - `forest`: derivazione, local root vs sotto-cascata, ordinamento per path,
   badge aggregato, conteggi per scope, note fuori cascata, note senza
   frontmatter.
-- `journal`: target state per file, chiavi estranee preservate, eviction FIFO,
-  veto, internment, preflight con divergenze, rewind che attraversa una
-  divergenza, file spariti.
-- `dry run`: conteggio dei soli file che cambiano, stima di peso, rilevamento
-  `<% %>`.
+- `journal`: target state per file, `REMOVED` per le cancellazioni, chiavi
+  estranee preservate, eviction FIFO, budget per operazione, veto su stima e su
+  reale, internment, preflight con divergenze, retry dopo rewind parziale senza
+  falsi conflitti, file spariti, nessuna entry senza scrittura.
+- `sessioni`: una per nota e non per view, condivisa da due tab, morte su
+  scrittura esterna (dashboard inclusa) e sopravvivenza alle scritture del
+  pulsante, cursore sincronizzato, riapertura della nota = storia vuota, Back
+  che non tocca il journal e journal che non tocca il Back.
+- `dry run`: conteggio dei soli file che cambiano, stima di peso
+  dell'operazione, rilevamento `<% %>`.
 - Fixture come struttura di path sintetica, senza file system reale.
 
 ### Criteri di completamento
 
 - `npm run build`, `npm run lint`, `npm test` verdi.
-- Le tre tab rispettano i counter e i disabilitati; `Cascades` è read-only.
+- Le tre tab rispettano i counter e i disabilitati; `Cascades` è read-only; un
+  tab attivo che scende a 0 mostra l'empty state in place.
 - `Update` sempre disponibile; `Align` bloccato su catena non sound, con motivo
   visibile su riga e gruppo.
-- `Fix all` esegue le tre fasi, si ferma su errore, e lascia tre card
-  raggruppate.
+- `Fix all` esegue le tre fasi, si ferma su errore, e lascia le card raggruppate
+  (fino a tre, una per fase che ha scritto).
 - Journal: undo, rewind con conferma, eviction visibile, fallimento parziale con
   retry, file spariti saltati con avviso.
-- Pannello: Back disabilitato con motivo invece di sparire; cursore che si
-  resetta; `Open cascade in scanner`.
+- History: verbo di annullamento dinamico con portata e numeri del preflight;
+  gruppo `Fix all` derivato; errore di rewind nel tab; empty state a 0.
+- Due livelli indipendenti: nessuna pressione del pannello in `History`, Back
+  che non consuma entry e non è toccato da eviction o restore.
+- Pannello: Back = stack non vuoto; sessione per nota condivisa e sincronizzata
+  tra tab; morte su qualunque scrittura esterna, dashboard inclusa;
+  `Open cascade in scanner`.
 - Schermata di indicizzazione solo quando serve, con uscita al timeout.
 - Verifiche manuali (resa desktop/mobile, tema chiaro/scuro, long-press/`⋯`,
-  indentazione profonda, animazione con `prefers-reduced-motion`) tracciate in
-  `YOUDO.md`.
+  indentazione profonda, animazione con `prefers-reduced-motion`, popout con la
+  stessa nota, drag di una tab tra pane) tracciate in `YOUDO.md`.
 - README e PROJECT.md aggiornati; voce spostata in `PROJECT.md` e rimossa da
   `FEATURES.md`.
 
@@ -491,7 +621,11 @@ l'IO iniettato.
 - Se serva un `Update all` unico che unisca template e note: oggi è escluso dal
   batch omogeneo.
 - Se l'errore di esecuzione debba anche essere persistito, o restare di
-  sessione come la history.
+  sessione come il journal.
+- Se una pressione del pannello superata da un batch debba avvisare
+  (`operation superseded`) o decadere in silenzio.
+- Cancellazione di un batch lungo (`Stop after current file`): oggi `Esc` e la
+  chiusura sono bloccati e non esiste un cancel.
 
 ## Voce di menu per creare il template di cartella
 
@@ -697,8 +831,8 @@ Note:
   invalido. Quando il link torna valido, il cursore riparte dalla fase base.
 - Il no-op di una fase usa lo stesso calcolo del reconform, inclusa la
   preservazione della chiave riservata.
-- Back/history continua a funzionare: lo snapshot contiene anche
-  `ct-interfaces`.
+- Back/history locale continua a funzionare: lo snapshot della nota contiene
+  anche `ct-interfaces`.
 
 ### Auto-apply
 
