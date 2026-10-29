@@ -10,6 +10,83 @@ Stati: `idea` → `in corso` → `completata` (da spostare).
 I controlli manuali non si annotano qui: vivono in `YOUDO.md`, che è
 l'unico elenco delle verifiche a carico dell'utente.
 
+## Baseline Obsidian 1.13.0
+
+Stato: idea — decisione presa, implementazione non iniziata.
+
+Perché: i tipi sono pinnati a `obsidian@1.5.7` e il floor dichiarato è 1.5.0.
+La 1.13 porta l'API dichiarativa delle impostazioni, i contenitori nativi dei
+modal (X di chiusura compresa) e un ridisegno della settings tab che rende la
+nostra UI visibilmente datata. Restare a 1.5 significa anche reimplementare a
+mano strutture che l'app ormai fornisce, come è successo per il modal di
+consenso del bridge Templater. Il costo è dichiarato: chi è su 1.11/1.12 smette
+di ricevere aggiornamenti.
+
+### Decisione
+
+- `minAppVersion` = `1.13.0` in `manifest.json`; un solo salto, non una scala
+  1.6 → 1.13.
+- Tipi dev a `obsidian@~1.13.0` (non `latest`, non `^`): il floor della feature,
+  non l'ultima pubblicazione.
+- Nessun fallback di compatibilità sotto 1.13: il percorso duale B della
+  feature «Settings UI» perde senso con questo floor.
+
+### Impatto sul codice
+
+- `package.json` / `package-lock.json`: `obsidian` → `~1.13.0`. `npm install`
+  va lanciato da Windows: in sandbox il registry è bloccato (403).
+- `manifest.json`: `minAppVersion` → `1.13.0`. `versions.json` non si tocca a
+  mano: `npm version` lo riscrive leggendo il manifest
+  (`scripts/version-bump.mjs`).
+- `eslint.config.mts`: la regola
+  `obsidianmd/settings-tab/prefer-setting-definitions` è disattivata con
+  motivazione legata al floor 1.5; con 1.13 l'override va rimosso o riscritto.
+- `main.ts`: verificare se il commento `eslint-disable` sull'`onload()`
+  asincrono serve ancora con i tipi 1.13.
+- `README.md`: aggiungere il requisito di versione (oggi non esiste una
+  sezione compatibilità).
+- `PROJECT.md` §9: baseline, motivazione e conseguenza sulla superficie di QA.
+- `src/settings.ts`: nessun cambio in questa voce; la resa appartiene alla
+  feature «Settings UI conforme al redesign».
+
+### Verifiche da fare al bump
+
+- Che `obsidian@1.13.0` esista su npm e che i tipi contengano
+  `getSettingDefinitions()`, `SettingGroup` e — se presenti —
+  `app.loadLocalStorage` / `saveLocalStorage`.
+- Che il modal fornisca da solo la X di chiusura e i contenitori nativi: se sì,
+  la struttura del modal di consenso non va replicata a mano.
+- Che nessuna API usata dal plugin sia stata rimossa o deprecata tra 1.5 e
+  1.13: lo dice il compilatore, ma vanno ricontrollati `Modal`, `Setting`,
+  `MetadataCache`, `Workspace.on("layout-change")` e i tipi di `Plugin`.
+- Che il plugin si carichi su 1.13 desktop e mobile e che il pannello Properties
+  si agganci come prima.
+
+### Criteri di completamento
+
+- `npm run build`, `npm run lint`, `npm test` verdi con i tipi 1.13.
+- Plugin caricato su 1.13 desktop e mobile: pannello, reconform, Back,
+  auto-apply e bridge test invariati.
+- Nessun uso di API più recente del floor dichiarato.
+- README e PROJECT.md aggiornati; voce spostata in `PROJECT.md` e rimossa da
+  `FEATURES.md`.
+
+### Non-obiettivi
+
+- Nessun cambio di comportamento, di persistenza o del modello di settings.
+- Nessun ridisegno della tab: appartiene alla feature «Settings UI conforme al
+  redesign di Obsidian».
+- Nessun supporto duale 1.5–1.13.
+
+### Aperti
+
+- Se il floor debba essere 1.13.0 o la prima patch che pubblica i tipi
+  dichiarativi, se diversa.
+- Ordine rispetto a «Settings UI» e al bridge Templater: il bump è prerequisito
+  di entrambe, quindi va per primo.
+- Comunicazione del taglio: la 1.13 esclude chi è su 1.11/1.12, che non riceverà
+  più aggiornamenti; va detto nel README e nella release.
+
 ## Dashboard Cascade Templates (ex scanner, E)
 
 Stato: in corso.
@@ -769,8 +846,8 @@ Aperti:
 
 ## Settings UI conforme al redesign di Obsidian
 
-Stato: idea — da pianificare dopo la decisione su `minAppVersion` e sull'ordine
-rispetto a Interfaces.
+Stato: idea — baseline decisa (1.13.0, vedi «Baseline Obsidian 1.13.0»);
+restano da riformulare A/B/C e l'ordine rispetto a Interfaces.
 
 Perché: Obsidian ha ridisegnato le impostazioni (header della tab, poi una card
 unica con le righe separate da hairline) e dalla 1.13 i plugin possono
@@ -808,6 +885,9 @@ La guida ufficiale consiglia C quando si può alzare il minimo, B quando
 esiste una base utenti su versioni precedenti. A ha senso solo se interessa la
 resa e non l'integrazione con la ricerca.
 
+> Nota: con la baseline 1.13.0 decisa (vedi «Baseline Obsidian 1.13.0»), B non
+> è più un'opzione e i costi di A e C vanno riletti senza il vincolo 1.5.
+
 ### Dipendenze e ordine
 
 - I tipi installati sono `obsidian@1.5.7` e non contengono né `SettingGroup` né
@@ -815,16 +895,18 @@ resa e non l'integrazione con la ricerca.
   `^1.13.0`): i tipi devono restare allineati al floor della feature, non
   all'ultima versione. `npm install` va lanciato da Windows: in sandbox il
   registry è bloccato.
-- `minAppVersion` è `1.5.0` in `manifest.json`. B lo lascia, C lo porta a
-  `1.13.0`. A resta a 1.5.
-- **Interfaces aggiunge una setting.** Con B conviene migrare la UI dopo
-  Interfaces: il toggle nasce nel vecchio `display()` insieme agli altri e
-  viene convertito una volta sola. Migrando prima, ogni nuova setting va
-  scritta due volte. Con C l'ordine è indifferente.
+- `minAppVersion` è `1.5.0` in `manifest.json`; la baseline decisa è 1.13.0
+  (vedi «Baseline Obsidian 1.13.0»), quindi B perde senso e A va inteso come
+  resa imperativa con `SettingGroup` a floor 1.13.
+- **Interfaces aggiunge una setting.** Se la resa resta imperativa (`display()`
+  + `SettingGroup`), conviene migrare la UI dopo Interfaces: il toggle nasce
+  insieme agli altri e viene convertito una volta sola. Con la resa
+  dichiarativa l'ordine è indifferente.
 - La regola `obsidianmd/settings-tab/prefer-setting-definitions` è disattivata
   in `eslint.config.mts` con la motivazione legata a `minAppVersion` 1.5:
   adottando l'API dichiarativa il commento va aggiornato o l'override rimosso.
-  `require-display` e `no-deprecated-display` sono già coerenti con B e C.
+  `require-display` e `no-deprecated-display` sono coerenti con entrambe le
+  rese possibili.
 
 ### Resa e contenuti
 
@@ -861,7 +943,8 @@ resa e non l'integrazione con la ricerca.
 
 ### Aperti
 
-- Scelta tra A, B e C, e quindi se alzare `minAppVersion`.
+- Scelta tra dichiarativo e imperativo con floor 1.13: A/B/C vanno riformulati
+  (B non ha più senso, A non «resta a 1.5», C non «taglia gli utenti < 1.13»).
 - Verificare che `obsidian@1.13.0` esista su npm e che i tipi contengano
   davvero `getSettingDefinitions()`: la reference API online non lo elenca
   ancora, lo documenta solo la guida.
@@ -875,3 +958,191 @@ Riferimenti:
 - [Settings](https://docs.obsidian.md/Plugins/User+interface/Settings)
 - [Migrate to declarative settings](https://docs.obsidian.md/plugins/guides/migrate-declarative-settings)
 - [SettingGroup](https://docs.obsidian.md/Reference/TypeScript+API/SettingGroup)
+
+## Bridge Templater opt-in con consenso per dispositivo
+
+Stato: idea.
+
+Perché: oggi `evaluateTemplaterInNotes` vale `true` di default e vive in
+`data.json`, quindi il permesso è opt-out e viaggia col vault: chi sincronizza
+si ritrova l'esecuzione di codice abilitata su un dispositivo dove non ha mai
+dato consenso. `PROJECT.md` §7 promette invece un ponte opt-in, e `<%* … %>`
+esegue JavaScript con i privilegi del plugin. Templater ha risolto lo stesso
+problema spostando i toggle pericolosi su base per-dispositivo, con avviso
+giallo nella riga e un modal che non si conferma senza una checkbox di
+assunzione di responsabilità: questa feature replica quel modello.
+
+### Prerequisito: baseline 1.13.0
+
+La feature assume `minAppVersion` 1.13.0 e tipi `obsidian@~1.13.0`: X del modal
+e contenitori nativi forniti dall'app, eventuale `app.loadLocalStorage` /
+`saveLocalStorage` tipizzato. Il bump è tracciato in «Baseline Obsidian
+1.13.0», che va eseguito per primo: questa feature non parte prima di quel
+bump. In assenza dei tipi 1.13 il flag usa `window.localStorage` con chiave
+namespaced; il comportamento non cambia.
+
+### Dipendenze
+
+Templater (`templater-obsidian`, v2.x) è una dipendenza esterna e opzionale:
+nessun bundling, nessun import statico, lookup runtime con feature detection.
+La feature non ha senso senza Templater e lo dichiara nella UI (nome della
+riga, descrizione, modal, README, PROJECT.md).
+
+### Comportamento
+
+1. Il flag non esiste più in `CascadeTemplatesSettings`: niente `data.json`,
+   niente persistenza sincronizzata.
+2. Flag per dispositivo in storage locale, chiave
+   `cascade-templates:evaluate-templater-in-notes`. Default assente = spento.
+3. Toggle ON → modal di conferma; nessuna scrittura prima della conferma.
+4. Conferma → flag scritto, toggle ON. Annulla / Esc / X → `setValue(false)`,
+   nessuna scrittura, riapertura possibile.
+5. `Enable` resta `disabled` finché la checkbox «I understand the risks» non è
+   spuntata.
+6. Templater assente o probe fallito: toggle `disabled`, nessun modal
+   raggiungibile, flag invariato.
+7. Primo avvio dopo l'aggiornamento: una sola Notice non modale per
+   dispositivo, perché il default precedente era ON e il cambio non deve
+   passare in silenzio.
+8. L'auto-apply `full` ricade sotto lo stesso consenso: nessun prompt
+   aggiuntivo per nota.
+9. Se il flag è ON ma Templater non è più disponibile, il runtime degrada al
+   valore raw senza scrivere nulla di rotto.
+
+### Capability probe
+
+- Il toggle è attivabile solo se il probe end-to-end è passato: `<% 1 + 1 %>`
+  via `create_running_config` + `parse_template`.
+- Target: nota `.md` attiva → primo `.md` del vault → `undefined`. Zero file
+  markdown = stato esplicito `Create a note first to verify the bridge`.
+- Eseguito all'apertura della tab impostazioni, una volta per sessione,
+  invalidato al cambio di `getTemplaterVersion()`.
+- Fallito: riga `bridge verification failed` + `Test again`; nessun blocco
+  definitivo, il probe si ripete.
+- Non tocca contenuto utente e non scrive: è l'unica valutazione Templater
+  fuori dai due percorsi di scrittura, ed è quella che il pulsante Test già
+  esegue.
+
+### UI (stringhe in inglese)
+
+Riga impostazioni, struttura identica a Templater (classi native, nessun CSS):
+
+> **Templater bridge**
+> Requires the Templater community plugin (v2.x or later); without it this
+> option stays disabled. When a note is reconformed or created with
+> "Properties and body", evaluate "<% … %>" values coming from `!Template.md`.
+> Never applied to template files.
+> **This setting is stored on this device only and must be enabled separately
+> on each device.**
+
+Stati della riga:
+
+| Stato | Testo | Toggle |
+|---|---|---|
+| assente | `Templater not detected — option unavailable` | disabled |
+| probe fallito | `Templater detected vX — bridge verification failed` + `Test again` | disabled |
+| probe ok, flag off | `Templater detected vX — bridge verified` | enabled, off |
+| probe ok, flag on | come sopra + `mod-warning` per-dispositivo | enabled, on |
+
+Modal:
+
+> **Enable Templater evaluation in notes**
+> This can be dangerous if your templates contain unsafe content: "<%* … %>"
+> blocks run arbitrary JavaScript, and expressions can read or modify files in
+> your vault.
+> *Only enable this if you trust the current and future contents of this
+> vault, including files you may later download, copy, or sync from other
+> people.*
+> This setting is stored on this device only; enable it separately on each
+> device where you use this vault. This plugin calls Templater's internal API;
+> if Templater is disabled or updated incompatibly, expressions are written
+> verbatim.
+>
+> `[ ] I understand the risks` `[Enable]` (disabled) `[Cancel]`
+
+Classi: `mod-warning`, `mod-checkbox`, `mod-cta`, `mod-cancel`,
+`modal-button-container`. Il contenitore bottoni è fratello di `.modal-content`,
+non figlio.
+
+### Tooltip del reconform
+
+Tre stati distinti, senza I/O aggiuntivo:
+
+- bridge spento e template con `<%` → invito ad attivare la setting;
+- bridge ON ma Templater non più disponibile → `expressions are written
+  verbatim`;
+- template con `<%*` → `contains script blocks that run code`, calcolato sulle
+  props del template (cache metadata). Nel solo auto-apply `full` il controllo
+  copre anche il body, che è già in memoria. Il pannello non legge il body:
+  sarebbe I/O per keystroke.
+
+### Migrazione
+
+- Il valore `evaluateTemplaterInNotes` presente in `data.json` viene ignorato:
+  non è un consenso informato, non va importato.
+- `normalizeSettings` non lo valida più; la chiave residua resta innocua.
+- Lettura e scrittura del flag in try/catch: storage non disponibile = spento.
+
+### Interazione con Templater
+
+- Nessuna dipendenza da `trigger_on_file_creation`: è la flag che fa valutare
+  `<% … %>` anche nei `!Template.md` e rompe l'invariante «template sempre
+  raw», senza che il plugin possa impedirlo.
+- `parse_template` gira senza sandbox: il modal è consenso informato, non
+  protezione, e il testo lo dice.
+- Resta valido il contratto attuale: API non pubblica, feature-detected, ogni
+  errore degrada al valore raw.
+
+### Impatto sul codice
+
+- `src/core/templaterConsent.ts` (nuovo): lettura, scrittura e cache del flag.
+- `src/features/TemplaterConsentModal.ts` (nuovo): modal con checkbox
+  bloccante.
+- `src/settings.ts`: campo rimosso dal modello e dai default; riga con
+  descrizione `mod-warning`; handler del toggle con modal e revert; probe e
+  stati della riga; Notice una-tantum.
+- `src/core/templateAPI.ts`: i due resolver leggono il flag dal dispositivo.
+- `src/features/metadataPanel.ts`: tooltip a tre stati.
+- `src/core/templaterBridge.ts`: helper `hasScriptSyntax` per `<%*`.
+- `manifest.json`, `package.json`, `versions.json`: baseline 1.13.0.
+- `PROJECT.md` §7, `README.md`: modello opt-in per dispositivo e prerequisito
+  Templater.
+- `YOUDO.md`: check manuali.
+
+### Criteri di completamento
+
+- `npm run build`, `npm run lint`, `npm test` verdi.
+- Primo uso: toggle OFF, nessuna valutazione, tooltip che invita ad attivare.
+- Attivazione: modal, `Enable` bloccato fino alla checkbox, flag scritto solo
+  dopo conferma.
+- Annulla / Esc / X: toggle OFF, storage invariato.
+- Probe: assente, fallito, ok; `Test again`; invalidazione al cambio versione.
+- Secondo dispositivo dopo sync: toggle OFF, Notice mostrata una volta per
+  dispositivo.
+- `<%*` segnalato nel tooltip; template mai valutati in nessun percorso.
+- README e PROJECT.md aggiornati; voce spostata in `PROJECT.md` e rimossa da
+  `FEATURES.md`.
+
+### Non-obiettivi
+
+- Nessun sandbox e nessun blocco selettivo di `<%*`: è sintassi legittima dei
+  template, il rischio si comunica, non si impedisce.
+- Nessuna granularità per nota, cartella o template: consenso per vault e per
+  dispositivo.
+- Nessun prompt a ogni reconform.
+- Nessuna dipendenza dalle impostazioni di Templater (trigger, system
+  commands).
+- Nessuna migrazione del vecchio `true` come consenso.
+
+### Aperti
+
+- Se la descrizione dichiarativa di 1.13 supporta contenuto ricco: se solo
+  stringa, il `mod-warning` va reso con un `render` dedicato (o si accetta
+  testo semplice, con il modal come segnale forte).
+- Se restringere il reconform alla sola template side (oggi valuta anche i
+  `<%` già presenti nella nota), allineandolo all'auto-apply.
+- Testo definitivo della Notice una-tantum.
+- Se separare un secondo gate per il body di auto-apply `full`.
+- Se il probe con target `undefined` sia tollerato da Templater: non
+  verificabile in sandbox, si scopre al primo run; in caso di errore resta lo
+  stato `verification failed`.
