@@ -10,11 +10,69 @@ Stati: `idea` → `in corso` → `completata` (da spostare).
 I controlli manuali non si annotano qui: vivono in `YOUDO.md`, che è
 l'unico elenco delle verifiche a carico dell'utente.
 
-## Baseline Obsidian 1.13.0
+## Mappa e ordine di lavoro
+
+Ogni feature ha una lettera stabile, usata anche nei rimandi incrociati di
+questo file. La tabella è in **ordine di lavoro**, non alfabetico.
+
+| Lettera | Feature | Stato |
+|---|---|---|
+| **A** | Baseline Obsidian 1.13.0 | idea |
+| **F** | Settings UI conforme al redesign di Obsidian | idea |
+| **G** | Bridge Templater opt-in con consenso per dispositivo | idea |
+| **B** | Cascade dashboard (ex scanner E) | in corso |
+| **C** | Voce di menu per creare il template di cartella | idea |
+| **D** | Interfaces (`ct-interfaces`) | idea |
+| **D2** | Interfaces without a template (sequel di D) | idea |
+
+Ordine deciso: **A → F → G → B → C → D**. D2 non entra in piano finché D non
+è validata sul campo.
+
+Perché questo ordine:
+
+- **A per primo.** È l'unica voce meccanica (manifest, tipi, un override
+  eslint, README) e sblocca F e G per contratto. In più dà a B i contenitori
+  nativi dei modal, quindi la dashboard nasce già sul floor nuovo. Dopo B il
+  bump imporrebbe un rebase su codice appena scritto.
+- **F → G e non il contrario.** G modifica la riga più complessa che F deve
+  migrare: invertirli significa implementarla due volte (dettaglio in F,
+  «Ordine con il bridge Templater»).
+- **G prima di B.** È il fix di sicurezza: oggi il permesso è opt-out e viaggia
+  col vault. Non deve stare dietro il progetto più grande.
+- **B prima di C e D.** B introduce il ritorno `{before, changes, changed}` di
+  `reconformFile` e gli helper della foresta che C e D usano; C è scritta
+  contro quel contratto e `main.ts` viene toccata da B e C una volta sola.
+- **D per ultima.** Tocca pannello, foresta e dashboard: arriva quando
+  l'universo della foresta è stabile.
+- **D2 fuori piano.** Dipende dagli aperti di D e di B.
+
+Vincoli da rispettare durante l'implementazione:
+
+- **Seam per D dentro B.** B deriva il riferimento con un `referenceFor(node)`
+  iniettabile; oggi risolve al template della cartella, con D diventa
+  template + interfacce della nota. La foresta non deve assumere un riferimento
+  per cartella, altrimenti D rifà `forest.ts`, `journal.ts` e i relativi test.
+- **Semantica prima del README di B.** La regola «`ok` = stesso insieme di
+  chiavi» e l'aperto «`ct-interfaces` è un'eccezione value-level?» (vedi D)
+  vanno decisi prima di congelare la regola nel README: D arriva dopo e non
+  deve smentirlo.
+- **`npm install` su Windows.** A non si chiude in sandbox (registry 403) e F
+  non può partire prima del bump reale dei tipi: il check va in `YOUDO.md`.
+  Tra A e F il lint mostra un warning transitorio su `display()`, accettato.
+- **Release.** A+F+G in una minor («baseline 1.13 + redesign settings +
+  consenso per dispositivo»), B come release della dashboard, poi C e D.
+- **Lettere storiche nel codice.** I commenti usano ancora le sessioni
+  (C = pannello, D = impostazioni, E = scanner, G = bridge), che non
+  coincidono con queste lettere: non si rinominano, se ne tiene conto in
+  lettura. Nei rimandi un aperto con due lettere (es. `D/B`) è condiviso dalle
+  due feature.
+
+## (A) Baseline Obsidian 1.13.0
 
 Stato: idea — decisione presa, implementazione non iniziata.
 
-Perché: i tipi sono pinnati a `obsidian@1.5.7` e il floor dichiarato è 1.5.0.
+Perché: il range dev di `obsidian` è `~1.5.0` (installato 1.5.7) e il floor
+dichiarato è 1.5.0.
 La 1.13 porta l'API dichiarativa delle impostazioni, i contenitori nativi dei
 modal (X di chiusura compresa) e un ridisegno della settings tab che rende la
 nostra UI visibilmente datata. Restare a 1.5 significa anche reimplementare a
@@ -28,9 +86,10 @@ di ricevere aggiornamenti.
   1.6 → 1.13.
 - Tipi dev a `obsidian@~1.13.0` (non `latest`, non `^`): il floor della feature,
   non l'ultima pubblicazione.
-- Nessun fallback di compatibilità sotto 1.13: la feature «Settings UI» resta
-  dichiarativa e non tiene `display()` come percorso parallelo.
-- Ordine: A per primo, poi F → G; Interfaces dopo B.
+- Nessun fallback di compatibilità sotto 1.13: la feature «Settings UI» (F)
+  resta dichiarativa e non tiene `display()` come percorso parallelo.
+- Ordine: A per primo, poi F → G, poi B, C e D (vedi «Mappa e ordine di
+  lavoro»).
 
 ### Impatto sul codice
 
@@ -49,7 +108,7 @@ di ricevere aggiornamenti.
   sezione compatibilità).
 - `PROJECT.md` §9: baseline, motivazione e conseguenza sulla superficie di QA.
 - `src/settings.ts`: nessun cambio in questa voce; la resa appartiene alla
-  feature «Settings UI conforme al redesign».
+  feature «Settings UI conforme al redesign» (F).
 
 ### Verifiche da fare al bump
 
@@ -79,7 +138,7 @@ di ricevere aggiornamenti.
 
 - Nessun cambio di comportamento, di persistenza o del modello di settings.
 - Nessun ridisegno della tab: appartiene alla feature «Settings UI conforme al
-  redesign di Obsidian».
+  redesign di Obsidian» (F).
 - Nessun supporto duale 1.5–1.13.
 
 ### Aperti
@@ -90,7 +149,7 @@ di ricevere aggiornamenti.
 - Comunicazione del taglio: la 1.13 esclude chi è su 1.11/1.12, che non riceverà
   più aggiornamenti; va detto nel README e nella release.
 
-## Cascade dashboard (ex scanner, E)
+## (B) Cascade dashboard (ex scanner, E)
 
 Stato: in corso.
 
@@ -151,6 +210,11 @@ locale alla nota, volatile e indipendente (vedi Due livelli di history).
   template `status: published` è `ok`. Va scritto nel README, perché è la prima
   cosa che verrà segnalata come bug. Le azioni non toccano mai i valori
   esistenti.
+- **Il riferimento è iniettato per nodo** (`referenceFor(node)`): oggi risolve
+  al template della cartella, con D (interfaces) diventa template + interfacce
+  dichiarate dalla nota. La derivazione non deve assumere un riferimento per
+  cartella: è la seam che evita di rifare `forest.ts`, `journal.ts` e i test
+  quando arriva D.
 - **Nota senza frontmatter o non indicizzata**: non partecipa. Non compare in
   `Issues`, non entra nei conteggi, non è raggiungibile dai verbi. Compare in
   `Cascade` come riga attenuata senza badge, perché la mappa strutturale non
@@ -655,9 +719,10 @@ perché fa I/O sulle view.
 - Cancellazione di un batch lungo (`Stop after current file`): oggi `Esc` e la
   chiusura sono bloccati e non esiste un cancel.
 
-## Voce di menu per creare il template di cartella
+## (C) Voce di menu per creare il template di cartella
 
-Stato: idea.
+Stato: idea — dopo B, che introduce il ritorno `{before, changes, changed}` di
+`reconformFile` e gli helper della foresta usati qui.
 
 Perché: creare a mano un template richiede di ricordare il `templateBasename`
 configurato e di posizionare il file nella cartella giusta. Una voce nel menu
@@ -732,9 +797,9 @@ Aperti:
 - se differenziare anche il disabled (`Root/Child template already exists`) o
   lasciarlo generico come da design attuale.
 
-## Interfaces (ct-interfaces)
+## (D) Interfaces (ct-interfaces)
 
-Stato: idea — pianificata per una minor dedicata.
+Stato: idea — pianificata per una minor dedicata, ultima in ordine dopo B e C.
 
 Perché: la cascata attuale condivide proprietà solo lungo l'asse cartella. Le
 interfacce aggiungono un secondo asse: una nota può dichiarare un insieme di
@@ -837,7 +902,7 @@ Per un **template con parent**:
 
 Per una **nota senza template**: in fase 1 la feature è inerte. `ct-interfaces`
 non viene risolta e il pannello resta nello stato "no template". Il caso è
-coperto dalla feature sequel.
+coperto da (D2).
 
 ### Conformità
 
@@ -874,7 +939,7 @@ Note:
   perde con Align/Reset: è il comportamento prevedibile, non un caso speciale.
 - Non esiste uno stato `invalid`: un link non risolto non blocca il pulsante e
   non fa ripartire il cursore. Il tooltip può elencarlo, ma la policy di
-  segnalazione è l'aperto D/E.
+  segnalazione è l'aperto D/B.
 - Il no-op di una fase usa lo stesso calcolo del reconform, inclusa la
   preservazione della chiave riservata.
 - Back/history locale continua a funzionare: lo snapshot della nota contiene
@@ -903,7 +968,7 @@ Note:
 - **Template**: l'icona continua a confrontare le props dichiarate con il
   parent. Il tooltip elenca le interfacce dichiarate.
 - **Link non risolto**: non c'è uno stato dedicato né hard-disable; il tooltip
-  può elencarlo. La segnalazione è l'aperto D/E.
+  può elencarlo. La segnalazione è l'aperto D/B.
 - **Nota senza template**: stato neutro e pulsante disabilitato, come oggi;
   `ct-interfaces` resta inerte in fase 1.
 - **Refresh**: quando cambia il frontmatter di una nota-interfaccia, vanno
@@ -916,12 +981,12 @@ Note:
 
 - **Note**: usano il riferimento effettivo (template + interfacce), filtrano
   `ct-interfaces` e non creano uno stato dedicato per le note con link non
-  risolti; la segnalazione è l'aperto D/E.
+  risolti; la segnalazione è l'aperto D/B.
 - **Template**: props dichiarate come oggi, più il check di sottoinsieme sui
   link `ct-interfaces`. Il valore della chiave non partecipa al confronto delle
   props.
 - **Link non risolti**: non c'è uno scanner dedicato in questa fase; la policy
-  di segnalazione è l'aperto D/E.
+  di segnalazione è l'aperto D/B.
 
 ### Settings
 
@@ -956,7 +1021,7 @@ Note:
 - Nessuna ricorsione tra interfacce.
 - Nessun picker o registro globale: ogni nota è già un'interfaccia e la prop si
   edita nel pannello Properties nativo.
-- Nessuna interfaccia per note senza template in questa fase (feature sequel).
+- Nessuna interfaccia per note senza template in questa fase (vedi D2).
 - Nessuna scrittura automatica al salvataggio.
 - Nessuna cartella o grammatica sul nome file: le interfacce sono link.
 - Nessuna ereditarietà implicita tra template: vale la regola esistente delle
@@ -977,10 +1042,11 @@ Note:
   resta in `interfaceProps.ts`.
 - `src/features/metadataPanel.ts`: riferimento effettivo, tooltip, refresh sulle
   interfacce; nessuno stato `invalid`.
-- `src/features/dashboard/`: filtro e riferimento effettivo; nessuno scanner per
-  i link non risolti in questa fase.
+- `src/features/dashboard/`: filtro e riferimento effettivo, innestato sulla
+  seam `referenceFor(node)` lasciata da B; nessuno scanner per i link non
+  risolti in questa fase.
 - `styles.css`: nessuno stato `invalid`; l'eventuale warning per i link non
-  risolti dipende dall'aperto D/E.
+  risolti dipende dall'aperto D/B.
 - `README.md`, `PROJECT.md`, `YOUDO.md`: documentazione e check manuali.
 
 ### Criteri di completamento
@@ -1000,17 +1066,16 @@ Note:
 
 - Politica dei link `ct-interfaces` non risolti: skip silenzioso o warning non
   bloccante; da decidere all'implementazione. Nessuno stato `invalid`.
-- `ct-interfaces` è un'eccezione value-level alla regola B `ok` = stesso insieme
-  di chiavi, o la regola vale solo per le note? Da decidere con B.
-- Universo E: le note senza template restano fuori dalla foresta; panel-only o
-  emendamento a B. Vedi feature sequel.
+- `ct-interfaces` è un'eccezione value-level alla regola `ok` di B (stesso
+  insieme di chiavi), o la regola vale solo per le note? Da decidere con B.
+- Universo di B: le note senza template restano fuori dalla foresta; panel-only
+  o emendamento a B. Vedi (D2).
 
-Restano fuori scope la ricorsione, il picker e le note senza template (vedi
-feature sequel).
+Restano fuori scope la ricorsione, il picker e le note senza template (vedi D2).
 
-## Interfaces without a template (sequel)
+## (D2) Interfaces without a template (sequel di D)
 
-Stato: idea.
+Stato: idea — fuori piano finché D non è validata.
 
 Perché: la feature Interfaces richiede un template come schema di riferimento.
 Una nota fuori da qualsiasi cascata non può usare `ct-interfaces`, anche se le
@@ -1034,11 +1099,11 @@ Aperti:
 - se il caso valga la complessità o se richiedere sempre un template sia
   sufficiente.
 
-## Settings UI conforme al redesign di Obsidian
+## (F) Settings UI conforme al redesign di Obsidian
 
 Stato: idea — decisione presa: solo API dichiarativa (`getSettingDefinitions()`),
-`display()` rimosso, floor 1.13.0. Ordine deciso: **F → G** (questa feature
-prima di «Bridge Templater opt-in»); Interfaces arriva dopo B.
+`display()` rimosso, floor 1.13.0. Ordine deciso: subito dopo A e prima di G;
+B arriva dopo questa coppia.
 
 Perché: Obsidian ha ridisegnato le impostazioni (header della tab, poi una card
 unica con le righe separate da hairline) e dalla 1.13 i plugin descrivono la tab
@@ -1050,8 +1115,8 @@ persistenza o del modello di settings.
 
 ### Ordine con il bridge Templater
 
-**F → G**, deciso: questa migrazione passa prima di «Bridge Templater opt-in».
-Il motivo non è la resa, è che G modifica la riga più complessa che F deve
+**F → G**, deciso: questa migrazione passa prima di «Bridge Templater opt-in»
+(G). Il motivo non è la resa, è che G modifica la riga più complessa che F deve
 migrare.
 
 - F costruisce le seam: `getSettingDefinitions()`, override di
@@ -1084,9 +1149,9 @@ migrare.
 - Nessun ramo imperativo di riserva e nessun uso di `SettingGroup`: i gruppi
   arrivano da `{ type: "group", heading, items }`, non da una resa manuale del
   blocco. `SettingGroup` resta un'API che conosciamo e non usiamo.
-- Nessun fallback sotto 1.13: `minAppVersion` sale a 1.13.0 (vedi «Baseline
-  Obsidian 1.13.0»), che è prerequisito e va eseguito per primo. Il taglio degli
-  utenti 1.11/1.12 è accettato e dichiarato in README e note di release.
+- Nessun fallback sotto 1.13: `minAppVersion` sale a 1.13.0 (vedi A), che è
+  prerequisito e va eseguito per primo. Il taglio degli utenti 1.11/1.12 è
+  accettato e dichiarato in README e note di release.
 - Il percorso duale (tenere `display()` accanto alle definizioni) è escluso: due
   implementazioni da tenere allineate sono esattamente il costo che questa
   decisione elimina.
@@ -1206,10 +1271,9 @@ Riferimenti:
 - [Migrate to declarative settings](https://docs.obsidian.md/plugins/guides/migrate-declarative-settings)
 - [PluginSettingTab](https://docs.obsidian.md/Reference/TypeScript+API/PluginSettingTab)
 
-## Bridge Templater opt-in con consenso per dispositivo
+## (G) Bridge Templater opt-in con consenso per dispositivo
 
-Stato: idea — ordine deciso: dopo F («Settings UI conforme al redesign di
-Obsidian»).
+Stato: idea — ordine deciso: dopo A e F, prima di B.
 
 Perché: oggi `evaluateTemplaterInNotes` vale `true` di default e vive in
 `data.json`, quindi il permesso è opt-out e viaggia col vault: chi sincronizza
@@ -1224,9 +1288,8 @@ assunzione di responsabilità: questa feature replica quel modello.
 
 La feature assume `minAppVersion` 1.13.0 e tipi `obsidian@~1.13.0`: X del modal
 e contenitori nativi forniti dall'app, `app.loadLocalStorage` /
-`saveLocalStorage` tipizzati. Il bump è tracciato in «Baseline Obsidian
-1.13.0», che va eseguito per primo: questa feature non parte prima di quel
-bump.
+`saveLocalStorage` tipizzati. Il bump è tracciato in (A), che va eseguito per
+primo: questa feature non parte prima di quel bump.
 
 ### Storage per dispositivo e vault
 
