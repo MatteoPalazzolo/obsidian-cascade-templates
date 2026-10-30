@@ -30,6 +30,7 @@ di ricevere aggiornamenti.
   non l'ultima pubblicazione.
 - Nessun fallback di compatibilità sotto 1.13: la feature «Settings UI» resta
   dichiarativa e non tiene `display()` come percorso parallelo.
+- Ordine: A per primo, poi F → G; Interfaces dopo B.
 
 ### Impatto sul codice
 
@@ -53,9 +54,10 @@ di ricevere aggiornamenti.
 ### Verifiche da fare al bump
 
 - Che `obsidian@1.13.0` esista su npm e che i tipi contengano
-  `getSettingDefinitions()`, `getControlValue()` / `setControlValue()`,
-  `refreshDomState()` e — se presenti — `app.loadLocalStorage` /
-  `saveLocalStorage`.
+  `getSettingDefinitions()`, `getControlValue()` / `setControlValue()` e
+  `refreshDomState()`. `app.loadLocalStorage` / `saveLocalStorage` sono già
+  nell'API pubblica dalla 1.8.7 e sono vault-specific; resta da confermare che
+  il pacchetto 1.13 li esponga.
 - Che il modal fornisca da solo la X di chiusura e i contenitori nativi: se sì,
   la struttura del modal di consenso non va replicata a mano.
 - Che nessuna API usata dal plugin sia stata rimossa o deprecata tra 1.5 e
@@ -82,14 +84,13 @@ di ricevere aggiornamenti.
 
 ### Aperti
 
-- Se il floor debba essere 1.13.0 o la prima patch che pubblica i tipi
-  dichiarativi, se diversa.
-- Ordine rispetto a «Settings UI» e al bridge Templater: il bump è prerequisito
-  di entrambe, quindi va per primo.
+- Floor confermato a 1.13.0. Se il pacchetto `obsidian@1.13.0` non pubblica i
+  tipi dichiarativi, si usa la prima 1.13.x che li contiene, mai una versione
+  sotto 1.13.
 - Comunicazione del taglio: la 1.13 esclude chi è su 1.11/1.12, che non riceverà
   più aggiornamenti; va detto nel README e nella release.
 
-## Dashboard Cascade Templates (ex scanner, E)
+## Cascade dashboard (ex scanner, E)
 
 Stato: in corso.
 
@@ -113,6 +114,12 @@ locale alla nota, volatile e indipendente (vedi Due livelli di history).
   template lungo la catena degli antenati.
 - **local root**: la cartella con un template che non ha template antenati. È la
   radice di una cascata.
+- **operazione**: il click su un verbo della dashboard, cioè l'unità che l'utente
+  percepisce e che il budget misura. `Fix all` è una macro: resta una sola
+  operazione, anche se produce più entry.
+- **entry**: il record di una scrittura nel journal. Ogni operazione che scrive
+  produce una entry; l'unica eccezione è `Fix all`, che ne produce una per fase
+  che scrive (fino a tre).
 - **sotto-cascata**: una cartella con template dentro il sottoalbero di
   un'altra cascata. Il suo template ha come riferimento il template
   dell'antenato più vicino, non la local root.
@@ -146,7 +153,7 @@ locale alla nota, volatile e indipendente (vedi Due livelli di history).
   esistenti.
 - **Nota senza frontmatter o non indicizzata**: non partecipa. Non compare in
   `Issues`, non entra nei conteggi, non è raggiungibile dai verbi. Compare in
-  `Cascades` come riga attenuata senza badge, perché la mappa strutturale non
+  `Cascade` come riga attenuata senza badge, perché la mappa strutturale non
   deve mentire sul contenuto della cartella.
 - Badge di cartella: aggregato dei figli con precedenza `missing` > `extra` >
   `ok`.
@@ -156,21 +163,22 @@ locale alla nota, volatile e indipendente (vedi Due livelli di history).
 
 ### Struttura del modal
 
-Titolo `Cascade Templates`. Non è più uno "scanner": è la dashboard del plugin.
+Titolo: da confermare dopo l'implementazione (`Cascade Templates` o `Cascade
+dashboard`). Non è più uno "scanner": è la dashboard del plugin.
 
 - Header condiviso dai tre tab: `Fix all (N)` centrato e `undo-2`
   (`Undo last batch`, tooltip: ultima operazione della dashboard), disabilitato
   quando il journal è vuoto.
-- Tab: `Cascades (R) | Issues (N) | History (N)`.
-  - `Cascades (R)`: `R` = numero di local root.
+- Tab: `Cascade | Issues (N) | History (M)`.
+  - `Cascade`: nessun contatore, nemmeno per le local root.
   - `Issues (N)`: `N` = file non conformi (le righe di contesto non contano).
-  - `History (N)`: `N` = entry ripristinabili.
+  - `History (M)`: `M` = entry ripristinabili.
   - `Fix all (N)` mostra lo stesso `N` di `Issues`, altrimenti nello stesso
     header compaiono due cifre diverse e sembra rotto.
   - `Issues` e `History` sono disabilitati quando il loro counter è 0. Se il
     counter scende a 0 mentre il tab è attivo, il tab resta attivo e mostra
     l'empty state in place: niente navigazione forzata.
-- Si apre su `Cascades`.
+- Si apre su `Cascade`.
 - Durante un batch o un rewind: tab, undo e chiusura del modal bloccati (stesso
   mutex). `Esc` non chiude il modal: è l'eccezione esplicita alla regola di
   tastiera. Un cancel per i batch lunghi è un aperto, non una promessa.
@@ -181,7 +189,7 @@ Titolo `Cascade Templates`. Non è più uno "scanner": è la dashboard del plugi
 - Report di fine operazione: `Notice` se è andato tutto bene, dialog di
   dettaglio se ci sono fallimenti.
 
-#### Tab `Cascades`
+#### Tab `Cascade`
 
 - Sola lettura. Nessun verbo, nessun hover, nessuna conferma.
 - Scheletro: local root ordinate per **path** (collation numerica), poi le
@@ -277,9 +285,11 @@ Titolo `Cascade Templates`. Non è più uno "scanner": è la dashboard del plugi
 
 ### Batch
 
-- Un click che scrive = un batch omogeneo (stesso tipo di file, stesso verbo) =
-  una entry del journal. Se il dry run conta 0 file cambiati il click non
-  produce entry e la UI lo dice (`Nothing to do`).
+- Un click che scrive = un'operazione. Per i verbi normali è un batch omogeneo
+  (stesso tipo di file, stesso verbo) e produce una entry del journal. `Fix all`
+  è l'unica macro e produce fino a tre entry, una per fase che scrive. Se il dry
+  run conta 0 file cambiati il click non produce entry e la UI lo dice
+  (`Nothing to do`).
 - **Dry run** prima di eseguire: calcola il target di ogni nodo con le stesse
   funzioni pure del batch, confronta con il corrente e conta solo i file che
   cambierebbero davvero. La stessa passata produce il numero per la conferma, la
@@ -302,8 +312,8 @@ Titolo `Cascade Templates`. Non è più uno "scanner": è la dashboard del plugi
 
 ### `Fix all`
 
-- **Macro, non verbo nuovo.** Esegue tre operazioni in sequenza, con una entry
-  per fase che scrive: `Update templates` → `Update notes` → `Align notes`.
+- **Macro, non verbo nuovo.** Esegue tre fasi in sequenza, con una entry per
+  fase che scrive: `Update templates` → `Update notes` → `Align notes`.
 - L'ordine è obbligato: `Update templates` cambia gli insiemi di riferimento,
   quindi le note possono diventare `missing` (fase 2) e le `extra` possono
   sparire (fase 3). Dopo la fase 1 la catena è sound per costruzione, quindi il
@@ -331,20 +341,25 @@ si scrivono a vicenda: nessuna delle due è una vista dell'altra.
 | | Journal globale | History della nota |
 |---|---|---|
 | Chi lo produce | operazioni del tab `Issues`, batch o singolo file | una pressione del pulsante a fasi nel pannello |
-| Unità | un'operazione | una pressione, con la sua fase |
+| Unità | un'operazione: una entry, salvo `Fix all` che ne produce fino a tre | una pressione, con la sua fase |
 | Scope | sessione del plugin | una per nota, condivisa dalle tab che mostrano quella nota |
 | Memoria | budget, internment, eviction FIFO | nessun budget: stack corto, limitato alla sessione |
 | Fine | `onunload`, eviction | scrittura esterna sul frontmatter, nessuna tab che mostra la nota, stack svuotato |
 | Superficie | tab `History` | `Back` del pannello |
 
 - Il journal **non** registra le pressioni del pannello (`origin: "batch" |
-  "fix-all"`); il Back **non** consuma entry, **non** fa scendere `History (N)`
+  "fix-all"`); il Back **non** consuma entry, **non** fa scendere `History (M)`
   e **non** è influenzato da eviction, undo o restore.
 - Il file è la risorsa condivisa: **qualsiasi scrittura sul frontmatter che non
   venga dal pulsante di quella nota uccide la sessione locale**, comprese le
   operazioni della dashboard. La scrittura globale ha priorità assoluta: una
   pressione che arriva durante un batch o un rewind **decade**, non viene
   accodata.
+- Sono due consumatori diversi dello stesso evento `changed`: il rebuild della
+  foresta ignora gli eventi generati dal batch e si riallinea a fine batch; la
+  sessione del pannello non li ignora e si chiude per token di origine. Un batch
+  della dashboard resta una scrittura esterna per il pannello, anche se non
+  provoca un rebuild dell'albero.
 - La sessione è **per nota, non per view**: due tab sulla stessa nota
   condividono stack, cursore e stato del pulsante e si aggiornano insieme.
   Editare la nota 1 non tocca la sessione della nota 2.
@@ -403,10 +418,11 @@ si scrivono a vicenda: nessuna delle due è una vista dell'altra.
   consumata**, riporto di fatti/non fatti, retry idempotente. I file già al
   target vengono saltati, non segnalati come divergenze.
 - Non atomicità: N `process` sequenziali, nessuna transazione. UI congelata, gli
-  eventi `changed` generati dal batch sono **ignorati** dal plugin, un solo
-  ricalcolo finale dalla `metadataCache`: dopo skip, fallimenti ed eviction il
-  journal non è source of truth della foresta. Un quit a metà lascia uno stato
-  parziale non tracciato: rischio accettato e dichiarato in UI.
+  eventi `changed` generati dal batch sono **ignorati dal rebuild della
+  foresta** (non dalla sessione del pannello, che si chiude per token di origine),
+  un solo ricalcolo finale dalla `metadataCache`: dopo skip, fallimenti ed
+  eviction il journal non è source of truth della foresta. Un quit a metà lascia
+  uno stato parziale non tracciato: rischio accettato e dichiarato in UI.
 - Divergenze: **calcolate on demand**, confrontando il valore corrente con
   l'`after` dell'ultima entry che ha scritto quella chiave (`REMOVED` compreso).
   Non si traccia nulla; l'unica cosa che viene dall'evento `changed` è il
@@ -424,9 +440,9 @@ si scrivono a vicenda: nessuna delle due è una vista dell'altra.
 - La troncatura è visibile: prima riga della history
   `N older operations are no longer restorable`.
 - **L'unità di budget è l'operazione, non la entry.** Una `Fix all` produce fino
-  a tre entry: la stima è la somma delle fasi, e una routine non si rimuove mai a
-  metà. O tutta o niente: se lo spazio basta solo per una parte, si scarta la
-  routine intera e la troncatura lo dice.
+  a tre entry ma resta **una sola unità di budget**: la stima è la somma delle
+  fasi, e la macro non si rimuove mai a metà. O tutta o niente: se lo spazio
+  basta solo per una parte, si scarta la macro intera e la troncatura lo dice.
 - **Operazione oversized.** Se la stima di una singola operazione supera il
   budget, troncare non basta: la conferma di esecuzione avvisa che l'operazione
   **non sarà annullabile**, parte solo su conferma esplicita e non viene
@@ -463,8 +479,8 @@ si scrivono a vicenda: nessuna delle due è una vista dell'altra.
 - Una pressione del pannello durante un batch o un rewind **non viene
   accodata**: decade, perché il globale ha priorità assoluta. La scrittura del
   pulsante non deve mai sovrascrivere quella del journal.
-- Il pannello guadagna una sola affordance: `Open cascade in scanner`, che apre
-  la dashboard sul tab `Cascades`, già scoped alla cascata del file corrente.
+- Il pannello guadagna una sola affordance: `Open cascade dashboard`, che apre
+  la dashboard sul tab `Cascade`, già scoped alla cascata del file corrente.
   È anche l'entry point mobile.
 
 ### Indicizzazione
@@ -518,8 +534,10 @@ insieme al renderer, non retrofittato.
   diventa decine di migliaia di lookup per rebuild.
 - Ricostruzione debounced su `changed`, `resolve`, `resolved` e sui `vault`
   `create` / `delete` / `rename`.
-- Durante un batch gli eventi `changed` generati dal plugin sono ignorati e
-  l'albero si riallinea dalla `metadataCache`, non dal journal.
+- Durante un batch gli eventi `changed` generati dal plugin sono ignorati dal
+  rebuild della foresta e l'albero si riallinea dalla `metadataCache`, non dal
+  journal. La sessione del pannello resta un consumatore separato: si chiude per
+  token di origine, non perché l'evento sia stato ignorato altrove.
 
 ### Rimozioni
 
@@ -543,13 +561,14 @@ insieme al renderer, non retrofittato.
 - `src/core/templateAPI.ts`: `reconformFile` torna `{before, changes, changed}`
   mantenendo un unico entry point; helper per il batch, che espone anche il dry
   run.
-- `src/core/reconformHistory.ts`: resta lo stack autonomo, con chiave = path
-  invece della view: snapshot con frontmatter, fase e chiavi scritte,
-  `endSession`, sweep debounced delle note visibili per scartare le sessioni
-  sparite. Nessun legame col journal.
+- `src/core/reconformSession.ts` (nuovo, puro): il modello dello stack, con
+  chiave = path invece della view: snapshot con frontmatter, fase e chiavi
+  scritte, `endSession`, sweep delle note visibili per scartare le sessioni
+  sparite. `src/core/reconformHistory.ts` resta l'adapter I/O che applica il
+  modello e parla con le view; nessun legame col journal.
 - `src/features/metadataPanel.ts`: `endSession` unifica `clearHistory` e il
   reset del cursore, sincronizzazione dello stato del pulsante tra le tab della
-  stessa nota, Back = stack non vuoto, affordance `Open cascade in scanner`.
+  stessa nota, Back = stack non vuoto, affordance `Open cascade dashboard`.
 - Scritture: un'unica API per path (coda seriale, ricalcolo dentro
   `vault.process`) e token di origine depositato sul path prima del write; il
   token `panel` non uccide la sessione, qualunque altro sì. Generation check al
@@ -557,28 +576,34 @@ insieme al renderer, non retrofittato.
 - `src/features/dashboard/` (nuova, sostituisce `src/scanner/`): modal, tab,
   albero, menu `⋯`, card di history, card di errore, progress line.
 - `src/settings.ts`: rimozione dei campi e dei tipi elencati sopra.
-- `main.ts`: import della dashboard, icona ribbon (`git-fork`, con fallback via
-  `setIconSafe`) e comando `Open Cascade Templates`. Il comando è l'eccezione
-  esplicita al vincolo "nessun comando in palette per ora" di `PROJECT.md` §12.
+- `main.ts`: import della dashboard, icona ribbon placeholder (`git-fork`, con
+  fallback via `setIconSafe`) e comando placeholder `Open Cascade Templates`. Il
+  comando è l'eccezione esplicita al vincolo "nessun comando in palette per ora"
+  di `PROJECT.md` §12.
 - `styles.css`: tab, righe dell'albero, indentation, progress line, card.
 - `README.md`: lessico della foresta, `ok` = insieme di chiavi, verbi e gate,
-  due livelli di history (journal della dashboard, Back locale alla nota),
-  rimozione dei due settings.
-- `PROJECT.md` §11 e §14 a lavoro concluso (la feature non si anticipa).
+  due livelli di history (journal della dashboard, Back locale alla nota). I due
+  settings dello scanner non sono elencati nel README attuale, quindi non c'è
+  una rimozione da annunciare.
+- `PROJECT.md` §11, §12 (eccezione comando), §13 (riattivazione scanner) e §14 a
+  lavoro concluso (la feature non si anticipa).
 
 ### Test
 
 La suite è pure-core: journal, forest, dry run e logica di sessione devono
 essere funzioni pure con l'IO iniettato (per le sessioni, l'insieme dei path
-aperti).
+aperti). Aggiungere `forest`, `journal` e il modulo puro di sessione a
+`tsconfig.test.json`; l'adapter `reconformHistory` resta fuori dalla suite
+perché fa I/O sulle view.
 
 - `forest`: derivazione, local root vs sotto-cascata, ordinamento per path,
   badge aggregato, conteggi per scope, note fuori cascata, note senza
   frontmatter.
 - `journal`: target state per file, `REMOVED` per le cancellazioni, chiavi
-  estranee preservate, eviction FIFO, budget per operazione, veto su stima e su
-  reale, internment, preflight con divergenze, retry dopo rewind parziale senza
-  falsi conflitti, file spariti, nessuna entry senza scrittura.
+  estranee preservate, eviction FIFO, budget per operazione e `Fix all` come una
+  sola unità anche con tre entry, veto su stima e su reale, internment, preflight
+  con divergenze, retry dopo rewind parziale senza falsi conflitti, file spariti,
+  nessuna entry senza scrittura.
 - `sessioni`: una per nota e non per view, condivisa da due tab, morte su
   scrittura esterna (dashboard inclusa) e sopravvivenza alle scritture del
   pulsante, cursore sincronizzato, riapertura della nota = storia vuota, Back
@@ -590,7 +615,7 @@ aperti).
 ### Criteri di completamento
 
 - `npm run build`, `npm run lint`, `npm test` verdi.
-- Le tre tab rispettano i counter e i disabilitati; `Cascades` è read-only; un
+- Le tre tab rispettano i counter e i disabilitati; `Cascade` è read-only; un
   tab attivo che scende a 0 mostra l'empty state in place.
 - `Update` sempre disponibile; `Align` bloccato su catena non sound, con motivo
   visibile su riga e gruppo.
@@ -604,7 +629,7 @@ aperti).
   che non consuma entry e non è toccato da eviction o restore.
 - Pannello: Back = stack non vuoto; sessione per nota condivisa e sincronizzata
   tra tab; morte su qualunque scrittura esterna, dashboard inclusa;
-  `Open cascade in scanner`.
+  `Open cascade dashboard`.
 - Schermata di indicizzazione solo quando serve, con uscita al timeout.
 - Verifiche manuali (resa desktop/mobile, tema chiaro/scuro, long-press/`⋯`,
   indentazione profonda, animazione con `prefers-reduced-motion`, popout con la
@@ -616,8 +641,9 @@ aperti).
 
 - Budget esatto da tarare su una misura reale; la soglia del veto è
   `budget / 2`.
-- Nome definitivo del comando (`Open Cascade Templates`) e conferma dell'icona
-  ribbon.
+- Nome definitivo del modal, del comando e dell'icona ribbon: rinviati a dopo
+  l'implementazione. Fino ad allora restano i placeholder (`Cascade Templates`,
+  `Open Cascade Templates`, `git-fork`).
 - Se il journal debba sopravvivere al reload: sarebbe una feature separata,
   perché al reload ogni entry va riverificata chiave per chiave.
 - Se serva un `Update all` unico che unisca template e note: oggi è escluso dal
@@ -658,15 +684,26 @@ Comportamento:
   vicino, anche con auto-apply `off`: è un'azione esplicita, non una cascata
   automatica;
 - il body segue auto-apply: `off`/`properties` → body vuoto, `full` → body del
-  parent copiato dal listener esistente;
+  parent copiato dal listener esistente. Il seed immediato del body non serve e
+  non è previsto: con il guard Templater auto-apply resta sicuro;
 - le espressioni `<% %>` restano raw: la destinazione è un template;
 - apertura in una nuova tab; path normalizzato anche per la root del vault.
 
 Note implementative:
+- prima di `vault.create`, registrare il path nella `Set` pubblica
+  `files_with_pending_templates` dell'istanza Templater (via il resolver già in
+  `templaterBridge.ts`) e rilasciarlo in `finally` dopo circa 1 s, anche se
+  `vault.create` fallisce. È la stessa guardia che Templater usa per i propri
+  template: al passaggio a ~300 ms salta il file,
+  quindi il nuovo template resta raw e non viene sovrascritto né valutato. Se il
+  campo non esiste, C funziona lo stesso e al massimo logga in debug: nessun
+  fallback a timer o a scritture ritardate;
 - riusare `reconformFile(created, "add-missing")` dopo `vault.create(path, "")`
-  per il seed delle proprietà: stesso motore della UI, già template-safe;
+  per il seed delle proprietà: stesso motore della UI, già template-safe. C
+  ignora il nuovo ritorno `{before, changes, changed}`: gli basta che il file sia
+  stato creato;
 - il seed legge il parent diretto, non fonde l'intera catena: un parent non
-  conforme resta un errore dello scanner;
+  conforme resta un errore della dashboard;
 - la distinzione root/child usa lo stesso walk sincrono di `getTemplateOfFile`:
   nessun costo aggiuntivo;
 - registrarsi su `file-menu` con la sola guardia `TFolder`; la verifica dal vivo
@@ -682,6 +719,10 @@ Criteri di completamento:
 - cartella con template locale, con solo template antenato, senza nessuno dei
   due;
 - `npm run build` e `npm test` verdi;
+- con Templater attivo, `trigger_on_file_creation` acceso e
+  `files_with_pending_templates` presente, il template appena creato resta raw:
+  nessuna espressione `<% %>` valutata e nessun overwrite al passaggio a ~300 ms
+  (verifica tracciata in `YOUDO.md`);
 - documentazione utente aggiornata;
 - voce spostata in `PROJECT.md` e rimossa da `FEATURES.md`.
 
@@ -689,9 +730,7 @@ Aperti:
 - se il template esiste, valutare un `Open template` separato in una sezione
   `view` (non nello slot create);
 - se differenziare anche il disabled (`Root/Child template already exists`) o
-  lasciarlo generico come da design attuale;
-- interazione con `trigger_on_file_creation` di Templater;
-- eventuale seed del body immediato invece di attendere i 200 ms di auto-apply.
+  lasciarlo generico come da design attuale.
 
 ## Interfaces (ct-interfaces)
 
@@ -749,9 +788,11 @@ ct-interfaces:
 - Nel contratto dei dati la dichiarazione è riservata: non viene confrontata
   come prop della nota e non viene copiata da un template a una nota.
   Nell'eredità tra template è invece una prop normale (vedi sotto).
-- Sono **invalidi**: link irrisolti, self-link, link a file non `.md`, valori
-  non-stringa, link malformati. Un solo link invalido rende invalido l'intero
-  riferimento e blocca il reconform.
+- Link irrisolti, self-link, link a file non `.md`, valori non-stringa e link
+  malformati **non contribuiscono al riferimento**. Non esiste uno stato
+  `invalid` e nessun link blocca Update/Align/Reset. Se un link non risolto
+  debba essere segnalato in silenzio o con un warning non bloccante è un aperto
+  di questa feature, da decidere all'implementazione.
 - I duplicati vengono deduplicati per path risolto; vince la prima occorrenza.
 - Un'interfaccia contribuisce solo con il proprio frontmatter, **esclusa
   `ct-interfaces`**. Non c'è ricorsione: se la nota-interfaccia dichiara a sua
@@ -806,8 +847,9 @@ coperto dalla feature sequel.
 - **Template vs parent**: props dichiarate come oggi, più il check di
   sottoinsieme sui link di `ct-interfaces`. Link del parent mancanti nel figlio
   = template incoerente; link extra del figlio = specializzazione ammessa.
-- **Link invalido**: il riferimento è incompleto. Lo stato non è `ok`/`missing`:
-  è un warning dedicato. Il pulsante entra nello stato `invalid`.
+- **Link non risolto**: non contribuisce al riferimento e non produce uno stato
+  dedicato. Update/Align/Reset usano i soli link risolti; la segnalazione
+  (silenziosa o warning non bloccante) è un aperto.
 - Un'interfaccia vuota (nessun frontmatter) è valida e non contribuisce nulla.
 
 ### Reconform
@@ -820,17 +862,19 @@ dichiarazione che sopravvive alle azioni.
 | Nota con template | aggiunge le chiavi mancanti del riferimento (template + interfacce), preserva i valori esistenti, riporta l'ordine al riferimento e lascia le prop extra in coda; preserva `ct-interfaces` | rimuove le prop non presenti nel riferimento; preserva `ct-interfaces` | riporta le prop ai default del riferimento; preserva `ct-interfaces` |
 | Template con parent | aggiunge le prop mancanti del parent e fa il merge dei link `ct-interfaces` del parent con quelli del figlio; non materializza le chiavi delle interfacce | default: se il parent ha `ct-interfaces` la chiave resta con l'array del figlio; se il parent non ce l'ha, la chiave viene rimossa come prop extra | riporta le prop dichiarate al parent; `ct-interfaces` diventa l'array del parent, o viene rimossa se il parent non ce l'ha; non materializza le chiavi |
 | Nota senza template | inerte in fase 1 | inerte | inerte |
-| Link invalido | bloccato | bloccato | bloccato |
+| Link non risolto | prosegue sui link risolti | prosegue sui link risolti | prosegue sui link risolti |
 
 Note:
+- `Reset` resta **solo del pannello Properties**: la dashboard B non lo espone e
+  non lo aggiunge.
 - Sulle note la dichiarazione `ct-interfaces` è sempre preservata: è ciò che
   definisce il riferimento. Rimuoverla cambierebbe il significato dell'azione.
 - Sui template `ct-interfaces` segue il comportamento di default rispetto al
   parent. Un template figlio che aggiunge interfacce non presenti nel parent le
   perde con Align/Reset: è il comportamento prevedibile, non un caso speciale.
-- Il pulsante entra nello stato `invalid` (hard-disabled, icona dedicata,
-  tooltip con il link rotto) se la nota o il suo template hanno un link
-  invalido. Quando il link torna valido, il cursore riparte dalla fase base.
+- Non esiste uno stato `invalid`: un link non risolto non blocca il pulsante e
+  non fa ripartire il cursore. Il tooltip può elencarlo, ma la policy di
+  segnalazione è l'aperto D/E.
 - Il no-op di una fase usa lo stesso calcolo del reconform, inclusa la
   preservazione della chiave riservata.
 - Back/history locale continua a funzionare: lo snapshot della nota contiene
@@ -854,12 +898,12 @@ Note:
 
 - **Nota**: l'icona confronta la nota con il riferimento (template +
   interfacce). Il tooltip riporta lo stato, il path del template e l'elenco
-  delle interfacce con la provenienza (`template` o `nota`). I link invalidi
-  compaiono nel tooltip.
+  delle interfacce con la provenienza (`template` o `nota`). I link non risolti
+  possono comparire nel tooltip; la policy di segnalazione è aperta.
 - **Template**: l'icona continua a confrontare le props dichiarate con il
   parent. Il tooltip elenca le interfacce dichiarate.
-- **Link invalido**: icona di stato in warning, non `ok`/`missing`. Il pulsante
-  di reconform è hard-disabled con stato `invalid`.
+- **Link non risolto**: non c'è uno stato dedicato né hard-disable; il tooltip
+  può elencarlo. La segnalazione è l'aperto D/E.
 - **Nota senza template**: stato neutro e pulsante disabilitato, come oggi;
   `ct-interfaces` resta inerte in fase 1.
 - **Refresh**: quando cambia il frontmatter di una nota-interfaccia, vanno
@@ -868,30 +912,30 @@ Note:
 - **Navigazione dal badge**: resta quella attuale (template per le note, parent
   per i template). Le interfacce si aprono dai link nella prop.
 
-### Scanner
+### Dashboard
 
-- **Note scanner**: usa il riferimento effettivo (template + interfacce),
-  filtra `ct-interfaces` e ignora le note con riferimento invalido, che sono
-  gestite dallo scanner dedicato.
-- **Template scanner**: props dichiarate come oggi, più il check di
-  sottoinsieme sui link `ct-interfaces`. Il valore della chiave non partecipa al
-  confronto delle props.
-- **Invalid-link scanner**: segnala link irrisolti, self-link, link a file non
-  `.md`, valori non-stringa. Cache-only, come gli altri scanner.
-- Autofix resta fuori scope (E2).
+- **Note**: usano il riferimento effettivo (template + interfacce), filtrano
+  `ct-interfaces` e non creano uno stato dedicato per le note con link non
+  risolti; la segnalazione è l'aperto D/E.
+- **Template**: props dichiarate come oggi, più il check di sottoinsieme sui
+  link `ct-interfaces`. Il valore della chiave non partecipa al confronto delle
+  props.
+- **Link non risolti**: non c'è uno scanner dedicato in questa fase; la policy
+  di segnalazione è l'aperto D/E.
 
 ### Settings
 
 - Toggle "Enable interfaces", default `off`.
 - Descrizione: riserva `ct-interfaces`; la prop contiene una lista di link a
   note; le props mancanti vengono aggiunte con Update o su note nuove; nessuna
-  scrittura automatica; i link invalidi bloccano il reconform; le note senza
-  template non sono supportate in questa fase.
+  scrittura automatica; i link non risolti non contribuiscono al riferimento e
+  la loro segnalazione è un aperto; le note senza template non sono supportate
+  in questa fase.
 - Il toggle deve aggiornare i pannelli aperti, come le altre setting.
 
 ### Casi limite
 
-- Interfaccia cancellata o rinominata: il link diventa invalido finché non
+- Interfaccia cancellata o rinominata: il link non è più risolto finché non
   viene corretto. Se Obsidian aggiorna i link interni al rename, la prop si
   aggiorna da sola.
 - Interfaccia che è un template: si usa solo il suo frontmatter dichiarato.
@@ -921,7 +965,8 @@ Note:
 ### Impatto sul codice
 
 - `src/conts.ts`: costante `INTERFACES_PROP = "ct-interfaces"`.
-- `src/settings.ts`: `enableInterfaces`, normalizzazione, toggle e descrizione.
+- `src/settings.ts`: `enableInterfaces`, normalizzazione, toggle e descrizione
+  nella tab dichiarativa di F.
 - Nuovo `src/core/interfaceProps.ts` (puro): parsing dei linkpath, filtro della
   chiave riservata, append/merge, preservazione della chiave, check di
   sottoinsieme, conformità del riferimento. Da aggiungere a
@@ -930,11 +975,12 @@ Note:
   `reconformFile`, auto-apply.
 - `src/core/conformance.ts`: eventuale helper puro per il sottoinsieme; il merge
   resta in `interfaceProps.ts`.
-- `src/features/metadataPanel.ts`: riferimento effettivo, tooltip, stato
-  `invalid`, refresh sulle interfacce.
-- `src/scanner/CoherenceScanner.ts`, `TemplateCoherenceScanner.ts`: filtro e
-  riferimento effettivo; nuovo scanner per i link invalidi.
-- `styles.css`: stato `invalid` del pulsante e warning dell'icona.
+- `src/features/metadataPanel.ts`: riferimento effettivo, tooltip, refresh sulle
+  interfacce; nessuno stato `invalid`.
+- `src/features/dashboard/`: filtro e riferimento effettivo; nessuno scanner per
+  i link non risolti in questa fase.
+- `styles.css`: nessuno stato `invalid`; l'eventuale warning per i link non
+  risolti dipende dall'aperto D/E.
 - `README.md`, `PROJECT.md`, `YOUDO.md`: documentazione e check manuali.
 
 ### Criteri di completamento
@@ -942,18 +988,25 @@ Note:
 - `npm run build`, `npm run lint`, `npm test` verdi.
 - Setting `off` invariato rispetto a oggi; setting `on` verificato su note e
   template.
-- Update/Align/Reset verificati per nota con template, template con parent,
-  link invalido.
+- Update/Align/Reset verificati per nota con template, template con parent e
+  link non risolto; nessun link blocca le azioni.
 - Auto-apply verificato per nuova nota e nuovo template.
-- Tooltip, stato `invalid`, refresh su cambio interfaccia e mobile verificati in
+- Tooltip, link non risolti, refresh su cambio interfaccia e mobile verificati in
   `YOUDO.md`.
 - README e PROJECT.md aggiornati; voce spostata in `PROJECT.md` e rimossa da
   `FEATURES.md`.
 
 ### Aperti
 
-- Nessuno sul modello. Restano fuori scope la ricorsione, il picker e le note
-  senza template (vedi feature sequel).
+- Politica dei link `ct-interfaces` non risolti: skip silenzioso o warning non
+  bloccante; da decidere all'implementazione. Nessuno stato `invalid`.
+- `ct-interfaces` è un'eccezione value-level alla regola B `ok` = stesso insieme
+  di chiavi, o la regola vale solo per le note? Da decidere con B.
+- Universo E: le note senza template restano fuori dalla foresta; panel-only o
+  emendamento a B. Vedi feature sequel.
+
+Restano fuori scope la ricorsione, il picker e le note senza template (vedi
+feature sequel).
 
 ## Interfaces without a template (sequel)
 
@@ -972,7 +1025,8 @@ Comportamento proposto:
 - reconform: solo Update (append delle chiavi mancanti); Align/Reset
   disabilitati;
 - tooltip e stato del pannello devono spiegare che il riferimento è parziale;
-- scanner dedicato o estensione dello scanner note.
+- dashboard dedicata o estensione del tab `Issues`; l'universo resta un aperto
+  (panel-only o emendamento a B).
 
 Aperti:
 - comunicazione UI dello stato parziale;
@@ -983,8 +1037,8 @@ Aperti:
 ## Settings UI conforme al redesign di Obsidian
 
 Stato: idea — decisione presa: solo API dichiarativa (`getSettingDefinitions()`),
-`display()` rimosso, floor 1.13.0. Restano da decidere l'ordine rispetto a
-«Bridge Templater opt-in» e a Interfaces.
+`display()` rimosso, floor 1.13.0. Ordine deciso: **F → G** (questa feature
+prima di «Bridge Templater opt-in»); Interfaces arriva dopo B.
 
 Perché: Obsidian ha ridisegnato le impostazioni (header della tab, poi una card
 unica con le righe separate da hairline) e dalla 1.13 i plugin descrivono la tab
@@ -993,6 +1047,34 @@ Oggi la tab è una lista piatta di `new Setting(containerEl)`
 (`src/settings.ts:233`) e resta visivamente indietro rispetto alle tab core.
 L'intervento è di struttura e resa: nessun cambio di comportamento, di
 persistenza o del modello di settings.
+
+### Ordine con il bridge Templater
+
+**F → G**, deciso: questa migrazione passa prima di «Bridge Templater opt-in».
+Il motivo non è la resa, è che G modifica la riga più complessa che F deve
+migrare.
+
+- F costruisce le seam: `getSettingDefinitions()`, override di
+  `getControlValue()`/`setControlValue()`, distinzione tra `refreshDomState()` e
+  `update()`, riga di test in `render`. G usa quelle seam per il flag locale, il
+  modal di consenso e il probe.
+- La riga Templater è il punto di sovrapposizione. F la mappa ancora come
+  `control` provvisorio su `evaluateTemplaterInNotes`; G cambia la sorgente del
+  valore e il comportamento, ma non deve riscrivere la tab.
+- G→F costringerebbe a implementare la riga due volte: prima in `display()` con
+  `addToggle`/`onChange`, poi in `getSettingDefinitions()` con l'override. Il
+  modal, il revert su cancel e il probe verrebbero spostati due volte.
+- F è un refactor con invariante “stesso comportamento”; G è un cambio di
+  sicurezza con invariante “default off, nessuna scrittura prima della
+  conferma”. Tenerli separati permette di attribuire una regressione all'uno o
+  all'altro.
+- Templater stesso è il riferimento: in `Settings.ts` il toggle locale pericoloso
+  resta un `control`, e `getControlValue()`/`setControlValue()` leggono e
+  scrivono lo storage locale, con il modal nel setter. G può seguire quel
+  modello; F deve solo lasciare gli override pronti.
+- Se G fosse un fix di sicurezza già rilasciato, G prima sarebbe difendibile;
+  qui il lavoro è ancora in `FEATURES.md`, quindi F→G è l'ordine che evita il
+  doppio lavoro.
 
 ### Decisione: una sola API, quella dichiarativa
 
@@ -1054,11 +1136,14 @@ Fatti documentati che vincolano l'implementazione:
   alla row, non è una setting e non va persistito.
 - Il toggle Templater resta `disabled` quando Templater non è disponibile; il
   predicato viene rivalutato ai refresh del DOM, non a ogni tick.
-- Questa riga cambia forma con la feature «Bridge Templater opt-in»: lì il flag
-  esce dal modello, il toggle diventa un `render` con modal di consenso e gli
-  stati del probe. Se il bridge passa prima, questa feature converte quella riga
-  una volta sola; se passa dopo, la converte qui e il bridge la riscrive.
-  L'ordine va deciso (vedi Aperti).
+- La riga Templater è **provvisoria**: G la trasforma in un flag locale per
+  dispositivo. G può mantenerla `control` con override di
+  `getControlValue()`/`setControlValue()` (modello Templater) e lasciare
+  `Test again` nella riga `render`; la scelta finale è di G. F non introduce già
+  il caso speciale: mappa il campo attuale e lascia gli override pronti.
+- La riga «Templater bridge test» resta separata: descrizione dinamica più
+  pulsante, quindi `render`. G la riusa per gli stati del probe e `Test again`,
+  senza accorpare toggle e test in un unico `render`.
 
 ### Resa e contenuti
 
@@ -1080,10 +1165,11 @@ Fatti documentati che vincolano l'implementazione:
 - `src/settings.ts`: `display()` → `getSettingDefinitions()`; override di
   `getControlValue()` / `setControlValue()`; bridge test in `render`; import di
   `Setting` solo dove serve un `render`.
-- `eslint.config.mts`: la regola
-  `obsidianmd/settings-tab/prefer-setting-definitions` è disattivata perché il
-  floor era 1.5 (`eslint.config.mts:50`): con il floor 1.13 l'override e il
-  commento vanno rimossi, non riscritti.
+- `eslint.config.mts`: l'override della regola
+  `obsidianmd/settings-tab/prefer-setting-definitions` è rimosso in A, insieme
+  al commento (`eslint.config.mts:50`, regola a `:52`). F non lo reintroduce: se
+  A precede F, il lint può mostrare un warning transitorio su `display()` fino
+  alla migrazione; è accettato e si chiude con F.
 - `main.ts`: verificare se il commento `eslint-disable` su `onload()` asincrono
   serve ancora con i tipi 1.13.
 - `README.md`: requisito di versione e descrizioni accorciate. `PROJECT.md` §9 a
@@ -1104,9 +1190,8 @@ Fatti documentati che vincolano l'implementazione:
 
 ### Aperti
 
-- Ordine rispetto a «Bridge Templater opt-in» e a Interfaces: entrambe toccano
-  la stessa tab, quindi conviene migrare subito prima o subito dopo una sola
-  delle due.
+- Riga Templater: la mappatura di F è provvisoria fino a G. Resta da decidere in
+  G se il toggle resta `control` + override locale o diventa `render`.
 - Raggruppamenti definitivi: blocco unico oppure gruppi Template / Templater /
   Toolbar (dipende da Interfaces, che aggiunge una setting).
 - Se accorciare le descrizioni e linkare il README.
@@ -1123,7 +1208,8 @@ Riferimenti:
 
 ## Bridge Templater opt-in con consenso per dispositivo
 
-Stato: idea.
+Stato: idea — ordine deciso: dopo F («Settings UI conforme al redesign di
+Obsidian»).
 
 Perché: oggi `evaluateTemplaterInNotes` vale `true` di default e vive in
 `data.json`, quindi il permesso è opt-out e viaggia col vault: chi sincronizza
@@ -1137,11 +1223,27 @@ assunzione di responsabilità: questa feature replica quel modello.
 ### Prerequisito: baseline 1.13.0
 
 La feature assume `minAppVersion` 1.13.0 e tipi `obsidian@~1.13.0`: X del modal
-e contenitori nativi forniti dall'app, eventuale `app.loadLocalStorage` /
-`saveLocalStorage` tipizzato. Il bump è tracciato in «Baseline Obsidian
+e contenitori nativi forniti dall'app, `app.loadLocalStorage` /
+`saveLocalStorage` tipizzati. Il bump è tracciato in «Baseline Obsidian
 1.13.0», che va eseguito per primo: questa feature non parte prima di quel
-bump. In assenza dei tipi 1.13 il flag usa `window.localStorage` con chiave
-namespaced; il comportamento non cambia.
+bump.
+
+### Storage per dispositivo e vault
+
+`app.loadLocalStorage` / `saveLocalStorage` sono nell'API pubblica dalla 1.8.7
+e sono **vault-specific**: la documentazione dice “for this vault” e
+“vault-specific value”. La 1.13 li ha, quindi non serve alcun fallback
+`window.localStorage`.
+
+- chiave `cascade-templates:evaluate-templater-in-notes`, valore booleano;
+  default assente = spento;
+- marker della Notice in `cascade-templates:templater-notice-shown`, così la
+  Notice non si ripete;
+- lettura una volta per operazione, **senza cache**: Templater legge
+  `templater-local-settings` a ogni chiamata e non ha cache; così non c'è
+  invalidazione tra finestre;
+- validare il valore (`stored === true`), non fidarsi del cast; try/catch =
+  spento.
 
 ### Dipendenze
 
@@ -1154,7 +1256,7 @@ riga, descrizione, modal, README, PROJECT.md).
 
 1. Il flag non esiste più in `CascadeTemplatesSettings`: niente `data.json`,
    niente persistenza sincronizzata.
-2. Flag per dispositivo in storage locale, chiave
+2. Flag per dispositivo e per vault in storage locale, chiave
    `cascade-templates:evaluate-templater-in-notes`. Default assente = spento.
 3. Toggle ON → modal di conferma; nessuna scrittura prima della conferma.
 4. Conferma → flag scritto, toggle ON. Annulla / Esc / X → `setValue(false)`,
@@ -1163,8 +1265,8 @@ riga, descrizione, modal, README, PROJECT.md).
    spuntata.
 6. Templater assente o probe fallito: toggle `disabled`, nessun modal
    raggiungibile, flag invariato.
-7. Primo avvio dopo l'aggiornamento: una sola Notice non modale per
-   dispositivo, perché il default precedente era ON e il cambio non deve
+7. Primo avvio dopo l'aggiornamento: una sola Notice non modale per dispositivo
+   (e per vault), perché il default precedente era ON e il cambio non deve
    passare in silenzio.
 8. L'auto-apply `full` ricade sotto lo stesso consenso: nessun prompt
    aggiuntivo per nota.
@@ -1179,6 +1281,8 @@ riga, descrizione, modal, README, PROJECT.md).
   markdown = stato esplicito `Create a note first to verify the bridge`.
 - Eseguito all'apertura della tab impostazioni, una volta per sessione,
   invalidato al cambio di `getTemplaterVersion()`.
+- Durante il probe la riga mostra `Checking…` e il toggle è `disabled`; al
+  termine si aggiorna lo stato.
 - Fallito: riga `bridge verification failed` + `Test again`; nessun blocco
   definitivo, il probe si ripete.
 - Non tocca contenuto utente e non scrive: è l'unica valutazione Templater
@@ -1194,14 +1298,15 @@ Riga impostazioni, struttura identica a Templater (classi native, nessun CSS):
 > option stays disabled. When a note is reconformed or created with
 > "Properties and body", evaluate "<% … %>" values coming from `!Template.md`.
 > Never applied to template files.
-> **This setting is stored on this device only and must be enabled separately
-> on each device.**
+> **This setting is stored on this device for this vault only and must be
+> enabled separately on each device.**
 
 Stati della riga:
 
 | Stato | Testo | Toggle |
 |---|---|---|
 | assente | `Templater not detected — option unavailable` | disabled |
+| probe in corso | `Checking…` | disabled |
 | probe fallito | `Templater detected vX — bridge verification failed` + `Test again` | disabled |
 | probe ok, flag off | `Templater detected vX — bridge verified` | enabled, off |
 | probe ok, flag on | come sopra + `mod-warning` per-dispositivo | enabled, on |
@@ -1215,16 +1320,19 @@ Modal:
 > *Only enable this if you trust the current and future contents of this
 > vault, including files you may later download, copy, or sync from other
 > people.*
-> This setting is stored on this device only; enable it separately on each
-> device where you use this vault. This plugin calls Templater's internal API;
-> if Templater is disabled or updated incompatibly, expressions are written
-> verbatim.
+> This setting is stored on this device for this vault only; enable it
+> separately on each device where you use this vault. This plugin calls
+> Templater's internal API; if Templater is disabled or updated incompatibly,
+> expressions are written verbatim.
 >
 > `[ ] I understand the risks` `[Enable]` (disabled) `[Cancel]`
 
 Classi: `mod-warning`, `mod-checkbox`, `mod-cta`, `mod-cancel`,
 `modal-button-container`. Il contenitore bottoni è fratello di `.modal-content`,
-non figlio.
+non figlio. Templater estende `ConfirmationModal` per lo stesso caso: se la
+1.13 la fornisce, G può usarla invece di replicare i container. Templater su
+mobile salta la checkbox e usa un solo bottone “I understand the risks, enable”;
+replicare o meno questa eccezione è un aperto.
 
 ### Tooltip del reconform
 
@@ -1247,9 +1355,10 @@ Tre stati distinti, senza I/O aggiuntivo:
 
 ### Interazione con Templater
 
-- Nessuna dipendenza da `trigger_on_file_creation`: è la flag che fa valutare
-  `<% … %>` anche nei `!Template.md` e rompe l'invariante «template sempre
-  raw», senza che il plugin possa impedirlo.
+- G non legge né modifica `trigger_on_file_creation`. C usa la `Set`
+  `files_with_pending_templates` solo per il file appena creato: è una guardia
+  di creazione, non un consenso. Il trigger resta una sorgente di rischio per
+  file creati fuori dal menu, ma non per C.
 - `parse_template` gira senza sandbox: il modal è consenso informato, non
   protezione, e il testo lo dice.
 - Resta valido il contratto attuale: API non pubblica, feature-detected, ogni
@@ -1257,15 +1366,17 @@ Tre stati distinti, senza I/O aggiuntivo:
 
 ### Impatto sul codice
 
-- `src/core/templaterConsent.ts` (nuovo): lettura, scrittura e cache del flag.
+- `src/core/templaterConsent.ts` (nuovo): lettura/scrittura del flag e del
+  marker Notice, senza cache; validazione e try/catch.
 - `src/features/TemplaterConsentModal.ts` (nuovo): modal con checkbox
-  bloccante.
-- `src/settings.ts`: campo rimosso dal modello e dai default; riga con
-  descrizione `mod-warning`; handler del toggle con modal e revert; probe e
-  stati della riga; Notice una-tantum.
+  bloccante, o `ConfirmationModal` nativa se disponibile.
+- `src/settings.ts`: campo rimosso dal modello e dai default; riga nella tab
+  dichiarativa di F; override locale in `getControlValue()`/`setControlValue()`
+  con modal e revert; probe e stati nel `render`; Notice una-tantum.
 - `src/core/templateAPI.ts`: i due resolver leggono il flag dal dispositivo.
 - `src/features/metadataPanel.ts`: tooltip a tre stati.
-- `src/core/templaterBridge.ts`: helper `hasScriptSyntax` per `<%*`.
+- `src/core/templaterBridge.ts`: helper `hasScriptSyntax` per `<%*`; la guardia
+  `files_with_pending_templates` è di C e usa lo stesso resolver.
 - `manifest.json`, `package.json`, `versions.json`: baseline 1.13.0.
 - `PROJECT.md` §7, `README.md`: modello opt-in per dispositivo e prerequisito
   Templater.
@@ -1275,12 +1386,15 @@ Tre stati distinti, senza I/O aggiuntivo:
 
 - `npm run build`, `npm run lint`, `npm test` verdi.
 - Primo uso: toggle OFF, nessuna valutazione, tooltip che invita ad attivare.
-- Attivazione: modal, `Enable` bloccato fino alla checkbox, flag scritto solo
-  dopo conferma.
+- Attivazione: modal, `Enable` bloccato fino alla checkbox (su desktop; vedi
+  aperto mobile), flag scritto solo dopo conferma.
 - Annulla / Esc / X: toggle OFF, storage invariato.
-- Probe: assente, fallito, ok; `Test again`; invalidazione al cambio versione.
+- Storage: chiave locale vault-specific, nessun fallback `window.localStorage`,
+  valore validato; due vault sullo stesso dispositivo hanno flag separati.
+- Probe: assente, in corso, fallito, ok; `Test again`; invalidazione al cambio
+  versione.
 - Secondo dispositivo dopo sync: toggle OFF, Notice mostrata una volta per
-  dispositivo.
+  dispositivo e per vault.
 - `<%*` segnalato nel tooltip; template mai valutati in nessun percorso.
 - README e PROJECT.md aggiornati; voce spostata in `PROJECT.md` e rimossa da
   `FEATURES.md`.
@@ -1298,13 +1412,11 @@ Tre stati distinti, senza I/O aggiuntivo:
 
 ### Aperti
 
-- Il `mod-warning` della riga: `desc` accetta anche un `DocumentFragment`
-  (`createFragment`), quindi il testo può restare in un `control`; va deciso se
-  basta il testo semplice con il modal come segnale forte.
 - Se restringere il reconform alla sola template side (oggi valuta anche i
   `<%` già presenti nella nota), allineandolo all'auto-apply.
 - Testo definitivo della Notice una-tantum.
-- Se separare un secondo gate per il body di auto-apply `full`.
+- Checkbox su mobile: replicare l'eccezione di Templater (un solo bottone,
+  senza checkbox) o mantenere il blocco anche su mobile?
 - Se il probe con target `undefined` sia tollerato da Templater: non
   verificabile in sandbox, si scopre al primo run; in caso di errore resta lo
   stato `verification failed`.
