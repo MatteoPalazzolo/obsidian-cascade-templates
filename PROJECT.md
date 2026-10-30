@@ -91,8 +91,9 @@ Dettagli:
 
 ## 9. Compatibilità
 
-- **Baseline: Obsidian 1.5.0** (`minAppVersion`). Il pannello si aggancia alla DOM Properties (introdotta in 1.4); 1.5 è scelta per UI più assestata, Lucide più recente e meno superficie di QA.
-- I tipi del pacchetto dev `obsidian` sono **pinnati alla linea 1.5**: il compilatore impedisce di usare API più nuove di quelle dichiarate.
+- **Baseline: Obsidian 1.13.0** (`minAppVersion`). La 1.13 porta l'API dichiarativa delle impostazioni, i contenitori nativi dei modal (X di chiusura compresa) e il ridisegno della settings tab: è il floor su cui nasce la UI della feature F, e sotto quella soglia si sarebbero dovute reimplementare a mano strutture che l'app ora fornisce.
+- **Taglio dichiarato**: chi è su 1.11/1.12 smette di ricevere aggiornamenti. Va detto nel README (sezione Compatibility) e nella release; un solo salto 1.5 → 1.13, senza scala di fallback né supporto duale.
+- I tipi del pacchetto dev `obsidian` sono **pinnati alla linea 1.13** (`~1.13.0`): il compilatore impedisce di usare API più nuove di quelle dichiarate.
 - Le icone **Lucide** sono un asset runtime legato alla versione di Obsidian: rendono tutte tramite `setIconSafe` / `resolvableIcon` (fallback), così non dettano la soglia.
 
 ## 10. Auto-apply (D1)

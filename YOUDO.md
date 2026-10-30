@@ -8,3 +8,4 @@ Formato: `- [ ] <controllo> — <come/dove eseguirlo> (origine: <file:riga>)`.
 
 ---
 
+- [ ] Baseline 1.13: plugin caricato e flussi invariati su Obsidian 1.13 desktop e mobile — attivare il plugin su un vault con Obsidian 1.13 sia desktop sia mobile e provare pannello Properties, reconform, Back, auto-apply su nota nuova e bridge Templater (origine: manifest.json:5)

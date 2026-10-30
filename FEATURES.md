@@ -41,7 +41,7 @@ questo file. La tabella è in **ordine di lavoro**, non alfabetico.
 
 | Lettera | Feature | Stato |
 |---|---|---|
-| **A** | Baseline Obsidian 1.13.0 | spec |
+| **A** | Baseline Obsidian 1.13.0 | in corso |
 | **F** | Settings UI conforme al redesign di Obsidian | spec |
 | **G** | Bridge Templater opt-in con consenso per dispositivo | spec |
 | **B** | Cascade dashboard (ex scanner E) | spec |
@@ -96,10 +96,12 @@ Vincoli da rispettare durante l'implementazione:
 
 ## (A) Baseline Obsidian 1.13.0
 
-Stato: spec — decisione presa, implementazione non iniziata.
+Stato: in corso — bump applicato (tipi `~1.13.0`, `minAppVersion` 1.13.0, eslint e
+README allineati). Manca la verifica manuale su 1.13 desktop/mobile registrata in
+`YOUDO.md`: finché non è fatta, la voce resta qui e non si sposta in `PROJECT.md`.
 
-Perché: il range dev di `obsidian` è `~1.5.0` (installato 1.5.7) e il floor
-dichiarato è 1.5.0.
+Motivo (prima del bump): il range dev di `obsidian` era `~1.5.0` (installato 1.5.7) e il
+floor dichiarato 1.5.0.
 La 1.13 porta l'API dichiarativa delle impostazioni, i contenitori nativi dei
 modal (X di chiusura compresa) e un ridisegno della settings tab che rende la
 nostra UI visibilmente datata. Restare a 1.5 significa anche reimplementare a

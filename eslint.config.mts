@@ -46,10 +46,5 @@ export default defineConfig(
 				},
 			},
 		},
-		rules: {
-			// The declarative settings API requires minAppVersion >= 1.13; this
-			// plugin still supports 1.5, so `display()` remains the supported path.
-			'obsidianmd/settings-tab/prefer-setting-definitions': 'off',
-		},
 	},
 );

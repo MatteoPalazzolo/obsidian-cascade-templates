@@ -713,7 +713,8 @@ async function revealInExplorer(file: TAbstractFile): Promise<void> {
 		await leaf.setViewState({ type: "file-explorer", active: true });
 	}
 
-	// eslint-disable-next-line @typescript-eslint/await-thenable -- `revealLeaf` is typed `void` in obsidian@1.5 but returns a Promise on newer API releases; awaiting is a no-op on old runtimes and the correct ordering on new ones.
+	// `revealLeaf` returns a Promise on the 1.13 baseline: awaiting keeps the
+	// reveal ordered after the view state has settled.
 	await workspace.revealLeaf(leaf);
 
 	const view = leaf.view as unknown as RevealableFileExplorer;

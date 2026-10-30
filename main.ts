@@ -18,7 +18,8 @@ import {
 
 export default class extends Plugin {
 
-	// eslint-disable-next-line @typescript-eslint/no-misused-promises -- `Plugin.onload()` is typed `void` in obsidian@1.5 and `Promise<void> | void` in newer typings: keeping it async lets Obsidian await the initialization where supported.
+	// `Plugin.onload()` is typed `Promise<void> | void` since the 1.13 baseline,
+	// so the async implementation needs no lint suppression: Obsidian awaits it.
 	async onload() {
 		// https://lucide.dev/
 
