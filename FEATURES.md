@@ -5,7 +5,31 @@ sono completate: solo allora si spostano in `PROJECT.md` (archivio della
 documentazione) e si rimuovono da questo file. `PROJECT.md` non anticipa mai
 feature pianificate.
 
-Stati: `idea` → `in corso` → `completata` (da spostare).
+## Stati
+
+Quattro stati in sequenza. Lo stato misura il lavoro **fatto**: `spec` dice che
+il disegno è chiuso, non che il codice esista.
+
+- **`idea`** — la feature è annotata e motivata, ma il contratto non c'è: manca
+  il comportamento, o l'impatto sul codice, o i criteri di completamento,
+  oppure resta una decisione che ridisegna la feature. Non è implementabile
+  senza progettare.
+- **`spec`** — disegno chiuso: comportamento, impatto sul codice e criteri di
+  completamento sono scritti e coerenti. Gli `Aperti` sono decisioni locali e
+  circoscritte, dichiarate nella voce, che si chiudono durante
+  l'implementazione senza ridisegnare la feature. Codice assente.
+- **`in corso`** — esiste codice non ancora completo; la voce indica cosa manca
+  rispetto ai criteri di completamento. Di norma una sola feature per volta è
+  `in corso`.
+- **`completata`** — criteri di completamento soddisfatti e documentazione
+  aggiornata: la voce si sposta in `PROJECT.md` e si rimuove da qui, quindi
+  `completata` non resta mai scritto in questo file.
+
+Ciclo: `idea` → `spec` → `in corso` → `completata` (da spostare). Ogni passo
+avanti presuppone il precedente: non si entra `in corso` su una `idea` e non si
+esegue una `spec` che non è chiusa. Il passo indietro è ammesso quando il
+lavoro si ferma (`in corso` → `spec` se il codice non si regge, `spec` → `idea`
+se una decisione salta): lo stato è una fotografia, non una promessa.
 
 I controlli manuali non si annotano qui: vivono in `YOUDO.md`, che è
 l'unico elenco delle verifiche a carico dell'utente.
@@ -17,13 +41,16 @@ questo file. La tabella è in **ordine di lavoro**, non alfabetico.
 
 | Lettera | Feature | Stato |
 |---|---|---|
-| **A** | Baseline Obsidian 1.13.0 | idea |
-| **F** | Settings UI conforme al redesign di Obsidian | idea |
-| **G** | Bridge Templater opt-in con consenso per dispositivo | idea |
-| **B** | Cascade dashboard (ex scanner E) | in corso |
-| **C** | Voce di menu per creare il template di cartella | idea |
-| **D** | Interfaces (`ct-interfaces`) | idea |
+| **A** | Baseline Obsidian 1.13.0 | spec |
+| **F** | Settings UI conforme al redesign di Obsidian | spec |
+| **G** | Bridge Templater opt-in con consenso per dispositivo | spec |
+| **B** | Cascade dashboard (ex scanner E) | spec |
+| **C** | Voce di menu per creare il template di cartella | spec |
+| **D** | Interfaces (`ct-interfaces`) | spec |
 | **D2** | Interfaces without a template (sequel di D) | idea |
+
+La colonna Stato segue «Stati»; a dire cosa viene prima è l'ordine, non lo
+stato.
 
 Ordine deciso: **A → F → G → B → C → D**. D2 non entra in piano finché D non
 è validata sul campo.
@@ -69,7 +96,7 @@ Vincoli da rispettare durante l'implementazione:
 
 ## (A) Baseline Obsidian 1.13.0
 
-Stato: idea — decisione presa, implementazione non iniziata.
+Stato: spec — decisione presa, implementazione non iniziata.
 
 Perché: il range dev di `obsidian` è `~1.5.0` (installato 1.5.7) e il floor
 dichiarato è 1.5.0.
@@ -151,7 +178,10 @@ di ricevere aggiornamenti.
 
 ## (B) Cascade dashboard (ex scanner, E)
 
-Stato: in corso.
+Stato: spec — implementazione non iniziata. Parte dopo A, F e G
+(vedi «Mappa e ordine di lavoro»): oggi `src/scanner/` è ancora il codice in
+uso e nessun modulo della dashboard (`forest.ts`, `journal.ts`,
+`src/features/dashboard/`) esiste.
 
 Perché: lo scanner di 1.0.0 è un accordion piatto con due liste di file, senza
 gerarchia, senza scope visibile e senza azioni. Ma il modello del plugin è un
@@ -721,8 +751,9 @@ perché fa I/O sulle view.
 
 ## (C) Voce di menu per creare il template di cartella
 
-Stato: idea — dopo B, che introduce il ritorno `{before, changes, changed}` di
-`reconformFile` e gli helper della foresta usati qui.
+Stato: spec — dopo B, che introduce il ritorno
+`{before, changes, changed}` di `reconformFile` e gli helper della foresta
+usati qui.
 
 Perché: creare a mano un template richiede di ricordare il `templateBasename`
 configurato e di posizionare il file nella cartella giusta. Una voce nel menu
@@ -799,7 +830,9 @@ Aperti:
 
 ## (D) Interfaces (ct-interfaces)
 
-Stato: idea — pianificata per una minor dedicata, ultima in ordine dopo B e C.
+Stato: spec — minor dedicata, ultima in ordine dopo B e C, con due decisioni
+locali ancora aperte (eccezione value-level di `ct-interfaces` e politica dei
+link non risolti).
 
 Perché: la cascata attuale condivide proprietà solo lungo l'asse cartella. Le
 interfacce aggiungono un secondo asse: una nota può dichiarare un insieme di
@@ -1075,7 +1108,8 @@ Restano fuori scope la ricorsione, il picker e le note senza template (vedi D2).
 
 ## (D2) Interfaces without a template (sequel di D)
 
-Stato: idea — fuori piano finché D non è validata.
+Stato: idea — comportamento proposto, ma universo e comunicazione UI sono
+ancora da decidere; fuori piano finché D non è validata.
 
 Perché: la feature Interfaces richiede un template come schema di riferimento.
 Una nota fuori da qualsiasi cascata non può usare `ct-interfaces`, anche se le
@@ -1101,7 +1135,7 @@ Aperti:
 
 ## (F) Settings UI conforme al redesign di Obsidian
 
-Stato: idea — decisione presa: solo API dichiarativa (`getSettingDefinitions()`),
+Stato: spec — solo API dichiarativa (`getSettingDefinitions()`),
 `display()` rimosso, floor 1.13.0. Ordine deciso: subito dopo A e prima di G;
 B arriva dopo questa coppia.
 
@@ -1273,7 +1307,7 @@ Riferimenti:
 
 ## (G) Bridge Templater opt-in con consenso per dispositivo
 
-Stato: idea — ordine deciso: dopo A e F, prima di B.
+Stato: spec — ordine deciso: dopo A e F, prima di B.
 
 Perché: oggi `evaluateTemplaterInNotes` vale `true` di default e vive in
 `data.json`, quindi il permesso è opt-out e viaggia col vault: chi sincronizza

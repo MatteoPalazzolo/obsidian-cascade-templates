@@ -22,6 +22,7 @@ Riferimento di progetto: `PROJECT.md` (dominio, UI, auto-apply, scanner, stato e
 ## Gotchas
 - `main.js` is a generated, gitignored bundle. Never edit it; rebuild instead.
 - New/changed files must be LF (`.editorconfig` `end_of_line = lf`).
+- In caso di modifiche solo documentali NON eseguire operazioni di linting
 - Ti trovi all'interno di una sandbox che gira su WSL con il progetto condiviso in un mount da una cartella di windows, tienine conto.
 - Templater with `trigger_on_file_creation` on evaluates `<% … %>` in every new `.md` file under 100 KB, including `!Template.md` (its `on_file_creation` falls into an unconditional overwrite branch). Templates are only safe inside Templater's own `templates_folder`; our bridge cannot prevent that write. Its pass rewrites brand-new empty files at ~300 ms, hence auto-apply settles at 200 ms.
 
