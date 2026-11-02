@@ -41,8 +41,8 @@ questo file. La tabella è in **ordine di lavoro**, non alfabetico.
 
 | Lettera | Feature | Stato |
 |---|---|---|
-| **A** | Baseline Obsidian 1.13.0 | in corso |
-| **F** | Settings UI conforme al redesign di Obsidian | spec |
+| **A** | Baseline Obsidian 1.13.0 | completata |
+| **F** | Settings UI conforme al redesign di Obsidian | in corso |
 | **G** | Bridge Templater opt-in con consenso per dispositivo | spec |
 | **B** | Cascade dashboard (ex scanner E) | spec |
 | **C** | Voce di menu per creare il template di cartella | spec |
@@ -1137,17 +1137,23 @@ Aperti:
 
 ## (F) Settings UI conforme al redesign di Obsidian
 
-Stato: spec — solo API dichiarativa (`getSettingDefinitions()`),
-`display()` rimosso, floor 1.13.0. Ordine deciso: subito dopo A e prima di G;
-B arriva dopo questa coppia.
+Stato: in corso — migrazione dichiarativa completata in `src/settings.ts`:
+`getSettingDefinitions()` è l'unica implementazione, `display()` e
+`new Setting(containerEl)` sono rimossi, gli override di `getControlValue()` /
+`setControlValue()` delegano a `getSettings()` / `updateSettings()`, la riga del
+bridge test resta l'unico `render`. Restano da chiudere i check manuali di resa,
+ricerca globale e bridge, tracciati in `YOUDO.md`, e la verifica
+`npm run build` fuori sandbox (il container ha solo il binario esbuild per
+Windows). Finché non sono fatti la voce resta qui e non si sposta in
+`PROJECT.md`.
 
 Perché: Obsidian ha ridisegnato le impostazioni (header della tab, poi una card
 unica con le righe separate da hairline) e dalla 1.13 i plugin descrivono la tab
 in modo dichiarativo, entrando anche nella ricerca globale delle impostazioni.
-Oggi la tab è una lista piatta di `new Setting(containerEl)`
-(`src/settings.ts:233`) e resta visivamente indietro rispetto alle tab core.
-L'intervento è di struttura e resa: nessun cambio di comportamento, di
-persistenza o del modello di settings.
+Prima della migrazione la tab era una lista piatta di `new Setting(containerEl)`
+e restava visivamente indietro rispetto alle tab core. L'intervento è di
+struttura e resa: nessun cambio di comportamento, di persistenza o del modello
+di settings.
 
 ### Ordine con il bridge Templater
 

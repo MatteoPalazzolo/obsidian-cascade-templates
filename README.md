@@ -192,6 +192,8 @@ All behaviour is configured in the plugin settings, without any per-folder confi
 - Templater evaluation in notes;
 - toolbar visibility (always, or only when a template applies).
 
+Each row can also be reached from Obsidian's global settings search.
+
 ## Compatibility
 
 Cascade Templates requires **Obsidian 1.13.0 or later**, on desktop and mobile. The settings panel relies on the declarative settings API introduced in 1.13, so vaults on 1.11 or 1.12 no longer receive plugin updates.

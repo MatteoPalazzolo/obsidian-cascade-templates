@@ -1,4 +1,5 @@
-import { Plugin, PluginSettingTab, Setting, TAbstractFile } from "obsidian";
+import { Plugin, PluginSettingTab, type Setting, TAbstractFile } from "obsidian";
+import type { SettingDefinitionItem } from "obsidian";
 import { DEFAULT_TEMPLATE_BASENAME, TEMPLATE_FILE_EXTENSION } from "./conts";
 import { evaluateTemplaterContent, getTemplaterVersion, isTemplaterAvailable } from "./core/templaterBridge";
 
@@ -222,108 +223,133 @@ export function isTemplateFile(file: TAbstractFile | undefined | null): boolean 
 /**
  * AI: Settings tab (Settings → Community plugins → Cascade Templates).
  *
- * Fields write through `updateSettings`, so persistence and UI refresh are
- * handled by the same path as any other change.
+ * The tab is **declarative** (Obsidian 1.13+): it describes its rows through
+ * `getSettingDefinitions()` instead of building them with `new Setting(...)`.
+ * That is what makes every named row show up in Obsidian's global settings
+ * search, and it is the only implementation we keep — there is no `display()`
+ * fallback, because `minAppVersion` is 1.13.0.
+ *
+ * Our settings live in a module-level store, not in `this.plugin.settings`, so
+ * the `getControlValue` / `setControlValue` pair is overridden to read and write
+ * through `getSettings()` / `updateSettings()`. `updateSettings` is also the
+ * persistence step: overriding the setter replaces Obsidian's automatic
+ * `saveData()`, and it still notifies the panels (D3).
+ *
+ * The row order follows the mental model: what a template is, what new files
+ * inherit, then the optional Templater bridge (toggle + test), then the panel.
  */
 export class CascadeTemplatesSettingTab extends PluginSettingTab {
 	constructor(host: Plugin) {
 		super(host.app, host);
 	}
 
-	display(): void {
-		const { containerEl } = this;
-		containerEl.empty();
-
-		new Setting(containerEl)
-			.setName("Template file name")
-			.setDesc(
-				`Base name (without extension) of the folder template file. ` +
-				`Default: ${DEFAULT_TEMPLATE_BASENAME} → ${DEFAULT_TEMPLATE_BASENAME}.${TEMPLATE_FILE_EXTENSION}`
-			)
-			.addText(text => text
-				.setPlaceholder(DEFAULT_TEMPLATE_BASENAME)
-				.setValue(getSettings().templateBasename)
-				.onChange(async value => {
-					await updateSettings({ templateBasename: value });
-				}));
-
-		new Setting(containerEl)
-			.setName("Apply the template to new files")
-			.setDesc(
-				`A file created inside Obsidian (note or ${getTemplateFilename()}) receives the nearest ` +
-				`template's properties. "Properties and body" also copies the template body; existing ` +
-				`properties are kept. Templates always inherit raw expressions; Templater evaluation ` +
-				`only applies to notes.`
-			)
-			.addDropdown(dropdown => dropdown
-				.addOption("off", "Off")
-				.addOption("properties", "Properties only")
-				.addOption("full", "Properties and body")
-				.setValue(getSettings().autoApply)
-				.onChange(async value => {
-					await updateSettings({ autoApply: value as AutoApplyMode });
-				}));
-
+	/**
+	 * AI: Declarative description of the tab.
+	 *
+	 * Called on every `update()` and once when the tab is registered for search
+	 * indexing, so it must stay cheap: no I/O and no Templater probe. The probe
+	 * belongs to the bridge-test `render`, which only runs when the row is
+	 * actually drawn.
+	 */
+	getSettingDefinitions(): SettingDefinitionItem[] {
 		const templaterAvailable = isTemplaterAvailable(this.app);
-		const templaterDescription = templaterAvailable
-			? [
-				`When a note is reconformed or created with "Properties and body", evaluate "<% … %>"`,
-				`values coming from ${getTemplateFilename()} through Templater.`,
-				`Never applied to template files. Enable only if you trust your templates: "<%* … %>" runs code.`,
-			].join(" ")
-			: "Templater is not installed or not enabled: template expressions are copied verbatim into notes.";
 
-		new Setting(containerEl)
-			.setName("Evaluate template expressions in notes")
-			.setDesc(templaterDescription)
-			.addToggle(toggle => toggle
-				.setValue(getSettings().evaluateTemplaterInNotes)
-				.setDisabled(!templaterAvailable)
-				.onChange(async value => {
-					await updateSettings({ evaluateTemplaterInNotes: value });
-				}));
+		return [
+			{
+				name: "Template file name",
+				desc: `Base name of the folder template file, without extension. Default: ${DEFAULT_TEMPLATE_BASENAME}.`,
+				control: {
+					type: "text",
+					key: "templateBasename",
+					placeholder: DEFAULT_TEMPLATE_BASENAME,
+				},
+			},
+			{
+				name: "Apply the template to new files",
+				desc: "What a new file receives from its reference template; existing properties are always kept.",
+				control: {
+					type: "dropdown",
+					key: "autoApply",
+					options: {
+						off: "Off",
+						properties: "Properties only",
+						full: "Properties and body",
+					},
+				},
+			},
+			{
+				name: "Evaluate template expressions in notes",
+				desc: templaterAvailable
+					? `Evaluate "<% … %>" values coming from templates when writing to notes; never applied to template files.`
+					: "Templater is not installed or not enabled, so expressions are copied verbatim into notes.",
+				control: {
+					type: "toggle",
+					key: "evaluateTemplaterInNotes",
+					// AI: Re-evaluated on every DOM refresh; the feature is useless
+					// without the Templater plugin, so the toggle stays unavailable.
+					disabled: () => !isTemplaterAvailable(this.app),
+				},
+			},
+			{
+				name: "Templater bridge test",
+				desc: "Check that Templater can evaluate an expression in the active note.",
+				// AI: The only imperative row: a button plus a description that the
+				// click rewrites locally. The result is not a setting and is never
+				// persisted. G will extend this row with the probe states.
+				render: (setting: Setting) => {
+					setting.addButton(button => button
+						.setButtonText("Test")
+						.onClick(async () => {
+							const target = this.app.workspace.getActiveFile();
+							if (!target) {
+								setting.setDesc("Open a note before testing");
+								return;
+							}
 
-		// AI: G6 — small status dashboard. The description starts as a placeholder
-		// and is replaced with the real integration state when Test is pressed.
-		const bridgeStatus = new Setting(containerEl)
-			.setName("Templater bridge test")
-			.setDesc("---");
+							const version = getTemplaterVersion(this.app);
+							const detected = version ? `Templater detected v${version}` : "Templater detected";
 
-		bridgeStatus.addButton(button => button
-			.setButtonText("Test")
-			.onClick(async () => {
-				const target = this.app.workspace.getActiveFile();
-				if (!target) {
-					bridgeStatus.setDesc("Open a note before testing");
-					return;
-				}
+							if (!isTemplaterAvailable(this.app)) {
+								setting.setDesc("Templater not detected");
+								return;
+							}
 
-				const version = getTemplaterVersion(this.app);
-				const detected = version ? `Templater detected v${version}` : "Templater detected";
+							const rendered = await evaluateTemplaterContent(this.app, "<% 1 + 1 %>", target);
+							setting.setDesc(rendered === null
+								? `${detected} — bridge failed`
+								: `${detected} — bridge established`);
+						}));
+				},
+			},
+			{
+				name: "Show the properties toolbar",
+				desc: "Whether the toolbar is shown on every note or only when a template applies.",
+				control: {
+					type: "dropdown",
+					key: "panelVisibility",
+					options: {
+						always: "Always",
+						onlyWithTemplate: "Only when a template applies",
+					},
+				},
+			},
+		];
+	}
 
-				if (!isTemplaterAvailable(this.app)) {
-					bridgeStatus.setDesc("Templater not detected");
-					return;
-				}
+	/**
+	 * AI: Reads a `control` value from our module-level store. Obsidian calls
+	 * this on every render of the row.
+	 */
+	getControlValue(key: string): unknown {
+		return getSettings()[key as keyof CascadeTemplatesSettings];
+	}
 
-				const rendered = await evaluateTemplaterContent(this.app, "<% 1 + 1 %>", target);
-				bridgeStatus.setDesc(rendered === null
-					? `${detected} — bridge failed`
-					: `${detected} — bridge established`);
-			}));
-
-		new Setting(containerEl)
-			.setName("Show the properties toolbar")
-			.setDesc(
-				`Whether the status icon, reconform and Back buttons are shown on every markdown view, ` +
-				`or only when a template applies to the file.`
-			)
-			.addDropdown(dropdown => dropdown
-				.addOption("always", "Always")
-				.addOption("onlyWithTemplate", "Only when a template applies")
-				.setValue(getSettings().panelVisibility)
-				.onChange(async value => {
-					await updateSettings({ panelVisibility: value as PanelVisibility });
-				}));
+	/**
+	 * AI: Writes a `control` value through the normal settings path, so
+	 * persistence (`data.json`) and the panel refresh (D3) stay in one place.
+	 * Overriding this also replaces Obsidian's automatic `saveData()`.
+	 */
+	async setControlValue(key: string, value: unknown): Promise<void> {
+		await updateSettings({ [key]: value });
 	}
 }
