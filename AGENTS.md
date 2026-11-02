@@ -17,6 +17,7 @@ Riferimento di progetto: `PROJECT.md` (dominio, UI, auto-apply, scanner, stato e
 - `npm run lint` to run eslint check
 - `npm run typecheck` to check types
 - `npm test` - pure-core tests (`tsc -p tsconfig.test.json` + `node --test test/*.test.cjs`).
+- `npm run move` - production build + copy of `manifest.json`, `main.js`, `styles.css` into the Windows OneDrive test vault. Windows only; refuses to run inside the container.
 - Release: `npm version <patch|minor|major>` handles autonomously release draft only if on main branch and if all checks are passed
 
 ## Gotchas
