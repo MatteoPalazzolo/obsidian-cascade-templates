@@ -90,10 +90,6 @@ interface VerbConfig {
 	icon: string;
 }
 
-interface DashboardOptions {
-	focusPath?: string;
-}
-
 const TAB_LABELS: Record<TabId, string> = {
 	cascade: "Cascade",
 	issues: "Issues",
@@ -173,7 +169,6 @@ export class CascadeDashboardModal extends Modal {
 	private expanded = new Set<string>();
 	private activeRowId: string | null = null;
 	private pendingFocusId: string | null = null;
-	private focusPath?: string;
 	private issuesExpanded = false;
 	private rootsInitialized = false;
 	private loadStarted = false;
@@ -184,9 +179,8 @@ export class CascadeDashboardModal extends Modal {
 	private closed = false;
 	private indexCheckTimer: number | null = null;
 
-	constructor(app: App, options: DashboardOptions = {}) {
+	constructor(app: App) {
 		super(app);
-		this.focusPath = options.focusPath;
 	}
 
 	onOpen(): void {
@@ -268,7 +262,6 @@ export class CascadeDashboardModal extends Modal {
 			this.rootsInitialized = true;
 			for (const root of this.snapshot.forest.roots) this.expanded.add(`f:${root.path}`);
 		}
-		this.prepareFocus();
 		this.render();
 	}
 
@@ -292,29 +285,6 @@ export class CascadeDashboardModal extends Modal {
 			console.error("[cascade-templates] Could not build the cascade forest", error);
 			this.snapshot = null;
 		}
-	}
-
-	/**
-	 * AI: Opens the map already expanded on the cascade of the current note
-	 * (the panel affordance), without changing the global scope.
-	 */
-	private prepareFocus(): void {
-		if (!this.focusPath || !this.snapshot) return;
-
-		const path = this.focusPath;
-		const node = this.snapshot.forest.nodes.get(path);
-		if (!node) {
-			this.focusPath = undefined;
-			return;
-		}
-
-		for (const folder of folderTrail(path)) this.expanded.add(`f:${folder}`);
-		this.expanded.add(`g:${parentFolderPath(path)}`);
-		this.expanded.add(`f:${parentFolderPath(path)}`);
-
-		this.activeRowId = `${node.kind === "template" ? "t" : "n"}:${path}`;
-		this.pendingFocusId = this.activeRowId;
-		this.focusPath = undefined;
 	}
 
 	// --------------------------------------------------------------- rendering

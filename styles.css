@@ -625,14 +625,6 @@
         border-bottom-right-radius: 0;
     }
 
-    /* AI: B — the dashboard affordance is the third control of the row. */
-    &.cascade-templates-dashboard {
-        border-top-left-radius: 0;
-        border-bottom-left-radius: 0;
-        border-top-right-radius: var(--button-radius);
-        border-bottom-right-radius: var(--button-radius);
-    }
-
     /* ICON COLOR FIX */
     &.cascade-templates-reconform > .text-button-icon,
     &.cascade-templates-back > .text-button-icon {
@@ -684,10 +676,6 @@
    needed to keep the row together. The accessible name is preserved by the
    `aria-label` set in `createActionButton`. */
 body.is-phone .cascade-templates-back > .text-button-label {
-    display: none;
-}
-
-body.is-phone .cascade-templates-dashboard > .text-button-label {
     display: none;
 }
 

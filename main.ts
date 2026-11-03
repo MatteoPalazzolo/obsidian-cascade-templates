@@ -47,7 +47,7 @@ export default class extends Plugin {
 		// B: the dashboard is the single explicit surface of the plugin. The
 		// ribbon icon and the command are placeholders until the final naming.
 		this.addRibbonIcon(
-			resolvableIcon("git-fork"),
+			resolvableIcon("crown"),
 			"Open cascade dashboard",
 			() => openDashboard(this.app)
 		);

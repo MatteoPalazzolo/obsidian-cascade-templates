@@ -13,7 +13,6 @@ import { back, clear as clearHistory, getPhase, hasHistory, onHistoryChange, pus
 import { hasScriptSyntax, hasTemplaterSyntax, isTemplaterAvailable } from "../core/templaterBridge";
 import { isTemplaterEvaluationEnabled } from "../core/templaterConsent";
 import { getSettings, isTemplateFile } from "../settings";
-import { openDashboard } from "./dashboard";
 import { warnOnce } from "../utils/diagnostics";
 import { setIconSafe } from "../utils/icons";
 
@@ -106,8 +105,6 @@ export interface PanelUI {
 	reconformWarning: string | null;
 	/** AI: Back button (C4/H2): reverses the last reconform press. */
 	backEl: HTMLDivElement;
-	/** AI: B — opens the cascade dashboard scoped to the current note. */
-	dashboardEl: HTMLDivElement;
 	/**
 	 * AI: The native "Add property" button currently attached. Its CSS is
 	 * overridden to blend with our toolbar (styles.css), but only while the
@@ -372,11 +369,7 @@ function createPanel(view: MarkdownView): PanelUI {
 	reconform.el.classList.add(RECONFORM_CLASS);
 	const backBtn = createActionButton("undo-2", "Back", true);
 	backBtn.el.classList.add(BACK_CLASS);
-	const dashboardBtn = createActionButton("git-fork", "Cascade");
-	dashboardBtn.el.classList.add("cascade-templates-dashboard");
-	dashboardBtn.el.setAttribute("aria-label", "Open cascade dashboard");
-	dashboardBtn.el.title = "Open cascade dashboard";
-	actionsEl.append(reconform.el, backBtn.el, dashboardBtn.el);
+	actionsEl.append(reconform.el, backBtn.el);
 
 	const ui: PanelUI = {
 		view,
@@ -393,7 +386,6 @@ function createPanel(view: MarkdownView): PanelUI {
 		phase: 0,
 		phaseFile: null,
 		backEl: backBtn.el,
-		dashboardEl: dashboardBtn.el,
 		addButtonEl: null,
 		observer: null,
 		observedContainer: null,
@@ -401,12 +393,6 @@ function createPanel(view: MarkdownView): PanelUI {
 
 	reconform.el.addEventListener("click", (event) => void handleReconformClick(event, ui));
 	backBtn.el.addEventListener("click", (event) => void handleBackClick(event, ui));
-	dashboardBtn.el.addEventListener("click", (event) => {
-		event.preventDefault();
-		event.stopPropagation();
-		if (!app) return;
-		openDashboard(app, ui.view.file?.path);
-	});
 	statusEl.addEventListener("click", (event) => handleStatusClick(event, ui));
 	statusEl.addEventListener("keydown", (event) => handleStatusKeydown(event, ui));
 

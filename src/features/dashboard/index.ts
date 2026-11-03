@@ -20,7 +20,7 @@ export function disposeDashboard(): void {
 	disposeJournal();
 }
 
-/** AI: Opens the dashboard; `focusPath` expands the cascade of that note. */
-export function openDashboard(app: App, focusPath?: string): void {
-	new CascadeDashboardModal(app, { focusPath }).open();
+/** AI: Opens the dashboard from the ribbon or the command palette. */
+export function openDashboard(app: App): void {
+	new CascadeDashboardModal(app).open();
 }

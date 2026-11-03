@@ -187,7 +187,7 @@ Back undoes the last step and rewinds the button. Existing notes are never modif
 
 ### Cascade dashboard
 
-**Open cascade dashboard** is available from the ribbon, the command palette and the `Cascade` button in the properties toolbar (which opens it already scoped to the current note). The dashboard is a modal, not a persistent view.
+**Open cascade dashboard** is available from the ribbon and the command palette. The dashboard is a modal, not a persistent view.
 
 By default it shows the **Cascade** map only: a read-only tree of local roots, folders, templates and notes, with the reference template of every local root and the number of notes outside any cascade. This is the safe mode: it never writes.
 

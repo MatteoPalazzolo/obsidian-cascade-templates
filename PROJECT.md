@@ -28,7 +28,7 @@ Documenti complementari:
 ## 3. Pannello Properties
 
 - Toolbar **per-view** (`WeakMap<MarkdownView, PanelUI>`): compare in ogni nota visibile, anche con split pane, non solo nella nota attiva.
-- Layout della riga: `[indicatore di stato] [Add property nativo] [reconform] [Back] [Cascade]`.
+- Layout della riga: `[indicatore di stato] [Add property nativo] [reconform] [Back]`.
   `Add property` è il pulsante nativo di Obsidian e non va replicato.
 - **Indicatore di stato**: icona derivata dalla conformità (nota: `circle-*`; template: `file-check` / `file-x` rispetto al parent; senza template: `circle-dashed`).
 - **Tooltip dell'indicatore**: stato corrente + percorso del template di riferimento.
@@ -155,9 +155,9 @@ Dettagli:
 
 ## 12. Cascade dashboard (B)
 
-- La dashboard è l'unica superficie che agisce sull'intero vault. Si apre dal
-  ribbon (`git-fork`), dal comando `Open cascade dashboard` e dal pulsante
-  `Cascade` del pannello; dal pannello è già scoped alla cascata della nota.
+- La dashboard è l'unica superficie che agisce sull'intero vault. Si apre dalla
+  ribbon (`git-fork`) e dal comando `Open cascade dashboard`. Non aggiunge
+  controlli alla UI della nota: il pannello Properties resta invariato.
 - `Cascade` è una mappa **sola lettura** derivata dalle cartelle: per ogni local
   root mostra le sottocartelle, il template locale e le note raggruppate
   (`N notes`), con badge aggregato e conteggi `T` / `Nm` / `Ne` dello scope
@@ -242,7 +242,7 @@ Dettagli:
 - `src/core/reconformHistory.ts` — adapter I/O della sessione: stack per nota, sweep delle note visibili, scritture via templateAPI.
 - `src/core/templaterBridge.ts` — ponte Templater (props e body); disponibilità e versione per lo stato nelle impostazioni; `hasScriptSyntax` per l'avviso sui blocchi `<%* %>`; `holdTemplaterPendingTemplate` per la guardia sul `vault.create` dei template.
 - `src/features/TemplaterConsentModal.ts` — modal di consenso nativo (`ConfirmationModal`) con checkbox bloccante e `Enable` disabilitato.
-- `src/features/metadataPanel.ts` — UI, stati del cursore, sessione per nota, visibilità e pulsante di apertura dashboard.
+- `src/features/metadataPanel.ts` — UI, stati del cursore, sessione per nota, visibilità.
 - `src/features/folderTemplateMenu.ts` — voce del menu cartella e runner condiviso di creazione: placeholder `edit:` per i root, seed `add-missing`, guardia Templater.
 - `src/features/templateCommands.ts` — i due comandi palette (`create-folder-template`, `navigate-to-current-template`) con `checkCallback`.
 - `src/features/dashboard/` — `CascadeDashboardModal` (mappa, Issues, History, tastiera, progress), `actions` (batch sequenziale), `vaultForest` (adapter cache → foresta), `journalStore`, `confirm`.
