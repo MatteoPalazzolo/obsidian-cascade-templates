@@ -112,7 +112,46 @@ Dettagli:
 - Templater: solo note e solo col toggle attivo; template mai. Se `trigger_on_file_creation` di Templater è attivo, Templater valuta le espressioni anche nei `!Template.md`: è un comportamento esterno al plugin, vedi §7.
 - Sync/import: le note che arrivano con contenuto sono scartate; un singolo file vuoto può ricevere le props (merge non distruttivo).
 
-## 11. Scanner (E)
+## 11. Creazione del template di cartella (C)
+
+- Due entry point per la stessa azione: menu contestuale di una `TFolder`
+  (right-click su desktop, long-press su mobile) e command palette. Il menu è
+  l'entry point primario perché può colpire qualunque cartella; la palette
+  lavora solo sulla cartella della nota attiva, perché il file explorer non
+  espone una selezione pubblica.
+- Menu, solo cartelle: `New root cascade template` se non esiste un template
+  antenato, `New child cascade template` se esiste (erediterà le proprietà);
+  con un template locale la voce è disabilitata `Cascade template already in
+  folder` (icona `file`, non `file-check`). «Root» è l'inizio della cascata,
+  non la root del vault.
+- Palette: `Create cascade template in current folder` sulla cartella della
+  nota attiva; senza nota attiva è disabilitato via `checkCallback`. Se il
+  template esiste, il comando resta eseguibile e mostra una Notice con il path
+  in tono d'errore (`--text-error`), perché un comando disabilitato non
+  spiegherebbe il motivo.
+- Palette: `Navigate to parent template` apre in una nuova tab il template di
+  riferimento della nota attiva (per un template, il parent), con la stessa
+  risoluzione del pannello (`getTemplateOfFile`); disabilitato senza nota
+  attiva o senza template.
+- Il file viene creato e aperto in una nuova tab, con il path normalizzato
+  anche per la root del vault. Le proprietà del parent più vicino sono seminate
+  subito con `reconformFile(..., "add-missing")` anche con auto-apply `off`: è
+  un'azione esplicita, non una cascata. Il body segue auto-apply
+  (`off`/`properties` → vuoto, `full` → body del parent); le espressioni
+  `<% %>` restano raw.
+- Un template root nasce con il placeholder `edit:` in frontmatter: con un
+  frontmatter vuoto Obsidian non materializza la GUI delle proprietà, e
+  «sporcare» il frontmatter è l'unico modo per ottenerla. `edit` è una
+  proprietà reale e segue la cascata come tutte le altre; un child non riceve
+  il placeholder perché eredita dal parent.
+- Templater: prima di `vault.create` il path è registrato in
+  `files_with_pending_templates` e rilasciato in `finally`; il passaggio a
+  ~300 ms salta il file, che resta raw. Se il campo non esiste, l'azione
+  funziona comunque (al massimo logga in debug).
+- Il seed legge il parent diretto, non fonde la catena: un parent non conforme
+  resta un errore da segnalare.
+
+## 12. Scanner (E)
 
 - In 1.0.0 lo scanner non è esposto: nessun ribbon e nessuna sezione nelle impostazioni. I moduli restano in `src/scanner/` e non entrano nel bundle finché `main.ts` non li importa.
 - Una sola Modal (`TemplateScannerModal`) con due scanner: note vs template e template vs parent.
@@ -121,36 +160,41 @@ Dettagli:
 - Template vs parent segnala solo le proprietà mancanti; le proprietà extra sono attese (un template annidato specializza il parent).
 - Lo scanner legge e apre file, non modifica nulla. Autofix non ancora disponibile.
 
-## 12. Vincoli di design
+## 13. Vincoli di design
 
 - Toolbar **per-view**, non legata alla nota attiva globale.
-- Nessun comando in command palette per ora.
+- Command palette: solo le due azioni esplicite di C (creazione del template
+  nella cartella corrente, navigazione al parent template); nessun comando che
+  modifichi la nota attiva.
 - Scanner come **Modal**, mai View persistente.
 - UI e stringhe sorgente in inglese; i documenti interni in italiano.
 - Nessun reconform automatico a cascata.
 - Template e note condividono il motore ma mantengono regole e icone distinte.
 
-## 13. Stato e aperti
+## 14. Stato e aperti
 
-- Versione **1.0.2**: cascata, pannello, auto-apply, settings dichiarative (Obsidian 1.13+) e bridge Templater opt-in per dispositivo; scanner implementato ma non esposto.
+- Stato funzionale: cascata, pannello, auto-apply, settings dichiarative (Obsidian 1.13+), bridge Templater opt-in per dispositivo e creazione del template di cartella da menu/palette (C); scanner implementato ma non esposto. Ultima release: **1.0.2**.
 - Aperti:
   - **E2** autofix dello scanner e "fix all" riusando `reconformFile`, spingendo in history come la UI.
   - Riattivazione dello scanner: reimportare `TemplateScannerModal` in `main.ts` e ripristinare i settings.
   - **F3** release e versioning (`npm version`, tag senza prefisso `v`).
+  - C (polish): `Open template` nel menu della cartella e, da palette, apertura del template esistente al posto della sola Notice.
   - Verifica live del pannello su casi limite (focus su search/explorer, split multipli): check tracciato in `YOUDO.md`.
 - Test: core puro coperto da `npm test` (`setOperations`, `mapOperations`, `conformance`, 15 test); history coperta dallo smoke test, non è pura (WeakMap su `MarkdownView` + I/O).
 
-## 14. Riferimenti al codice
+## 15. Riferimenti al codice
 
 - `main.ts` — entry del plugin (`onload` / `onunload`); qui si collegano settings → core → UI.
 - `src/settings.ts` — modello impostazioni, persistenza, tab dichiarativa (`getSettingDefinitions()`, override di `getControlValue()` / `setControlValue()`) e probe Templater; espone `getTemplateFilename()` / `isTemplateFile()`.
 - `src/core/templaterConsent.ts` — consenso Templater per dispositivo/vault e marker della Notice una-tantum; nessuna cache, `stored === true`, errori di storage = spento.
-- `src/core/templateAPI.ts` — risoluzione del template, lettura/scrittura frontmatter, `reconformFile`, `computeReconformProps`, `computeTemplateConformance`, auto-apply. Contesto del plugin a livello di modulo: `init(this)` in `onload`, poi `getCtx().app` dentro queste funzioni, mai `this.app`.
+- `src/core/templateAPI.ts` — risoluzione del template (file e cartella), lettura/scrittura frontmatter, `reconformFile`, `computeReconformProps`, `computeTemplateConformance`, auto-apply. Contesto del plugin a livello di modulo: `init(this)` in `onload`, poi `getCtx().app` dentro queste funzioni, mai `this.app`.
 - `src/core/mapOperations.ts` — merge, conformità, `areMapsEqual`.
 - `src/core/setOperations.ts` — helper Set puri (sostituzione mobile-safe dei metodi TC39).
 - `src/core/reconformHistory.ts` — stack Back per `MarkdownView` (snapshot prima di ogni azione).
-- `src/core/templaterBridge.ts` — ponte Templater (props e body); disponibilità e versione per lo stato nelle impostazioni; `hasScriptSyntax` per l'avviso sui blocchi `<%* %>`.
+- `src/core/templaterBridge.ts` — ponte Templater (props e body); disponibilità e versione per lo stato nelle impostazioni; `hasScriptSyntax` per l'avviso sui blocchi `<%* %>`; `holdTemplaterPendingTemplate` per la guardia sul `vault.create` dei template.
 - `src/features/TemplaterConsentModal.ts` — modal di consenso nativo (`ConfirmationModal`) con checkbox bloccante e `Enable` disabilitato.
 - `src/features/metadataPanel.ts` — UI, stati del cursore, sessione, visibilità.
+- `src/features/folderTemplateMenu.ts` — voce del menu cartella e runner condiviso di creazione: placeholder `edit:` per i root, seed `add-missing`, guardia Templater.
+- `src/features/templateCommands.ts` — i due comandi palette (`create-folder-template`, `navigate-to-current-template`) con `checkCallback`.
 - `src/scanner/` — `TemplateScannerModal`, `ScannerABC`, `CoherenceScanner`, `TemplateCoherenceScanner`; cache-only, non importato in 1.0.0.
 - `src/conts.ts` — soli default statici (`DEFAULT_TEMPLATE_BASENAME = "!Template"`).

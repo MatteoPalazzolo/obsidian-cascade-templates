@@ -41,7 +41,6 @@ questo file. La tabella è in **ordine di lavoro**, non alfabetico.
 
 | Lettera | Feature | Stato |
 |---|---|---|
-| **C** | Voce di menu per creare il template di cartella | in corso |
 | **B** | Cascade dashboard (ex scanner E) | spec |
 | **D** | Interfaces (`ct-interfaces`) | spec |
 | **D2** | Interfaces without a template (sequel di D) | idea |
@@ -49,17 +48,11 @@ questo file. La tabella è in **ordine di lavoro**, non alfabetico.
 La colonna Stato segue «Stati»; a dire cosa viene prima è l'ordine, non lo
 stato.
 
-Ordine deciso: **B → C → D**, con C temporaneamente anticipata a B per una
-release pre-dashboard. D2 non entra in piano finché D non è validata sul campo.
-A, F e G sono completate e archiviate in `PROJECT.md`.
+Ordine deciso: **B → D**. D2 non entra in piano finché D non è validata sul
+campo. A, C, F e G sono completate e archiviate in `PROJECT.md`.
 
 Perché questo ordine:
 
-- **C anticipata a B (temporaneo).** C non usa il nuovo ritorno di
-  `reconformFile` né gli helper della foresta: crea il file, riusa
-  `add-missing` e delega il body all'auto-apply. È indipendente da B e adatta a
-  una release pre-dashboard; B resta la prossima feature grande e toccherà
-  `main.ts` una seconda volta.
 - **B prima di D.** B introduce il ritorno `{before, changes, changed}` di
   `reconformFile` e gli helper della foresta che D usa.
 - **D per ultima.** Tocca pannello, foresta e dashboard: arriva quando
@@ -76,8 +69,7 @@ Vincoli da rispettare durante l'implementazione:
   chiavi» e l'aperto «`ct-interfaces` è un'eccezione value-level?» (vedi D)
   vanno decisi prima di congelare la regola nel README: D arriva dopo e non
   deve smentirlo.
-- **Release.** C in una release pre-dashboard, B come release della dashboard,
-  poi D.
+- **Release.** B come release della dashboard, poi D.
 - **Lettere storiche nel codice.** I commenti usano ancora le sessioni
   (C = pannello, D = impostazioni, E = scanner, G = bridge), che non
   coincidono con queste lettere: non si rinominano, se ne tiene conto in
@@ -579,15 +571,13 @@ insieme al renderer, non retrofittato.
   albero, menu `⋯`, card di history, card di errore, progress line.
 - `src/settings.ts`: rimozione dei campi e dei tipi elencati sopra.
 - `main.ts`: import della dashboard, icona ribbon placeholder (`git-fork`, con
-  fallback via `setIconSafe`) e comando placeholder `Open Cascade Templates`. Il
-  comando è l'eccezione esplicita al vincolo "nessun comando in palette per ora"
-  di `PROJECT.md` §12.
+  fallback via `setIconSafe`) e comando placeholder `Open Cascade Templates`.
 - `styles.css`: tab, righe dell'albero, indentation, progress line, card.
 - `README.md`: lessico della foresta, `ok` = insieme di chiavi, verbi e gate,
   due livelli di history (journal della dashboard, Back locale alla nota). I due
   settings dello scanner non sono elencati nel README attuale, quindi non c'è
   una rimozione da annunciare.
-- `PROJECT.md` §11, §12 (eccezione comando), §13 (riattivazione scanner) e §14 a
+- `PROJECT.md` §12 (scanner), §13 (vincoli), §14 (stato) e §15 (riferimenti) a
   lavoro concluso (la feature non si anticipa).
 
 ### Test
@@ -657,120 +647,9 @@ perché fa I/O sulle view.
 - Cancellazione di un batch lungo (`Stop after current file`): oggi `Esc` e la
   chiusura sono bloccati e non esiste un cancel.
 
-## (C) Voce di menu per creare il template di cartella
-
-Stato: in corso — implementata anticipando B: `src/features/folderTemplateMenu.ts`,
-`getTemplateOfFolder` in `src/core/templateAPI.ts` e
-`holdTemplaterPendingTemplate` in `src/core/templaterBridge.ts`. C ignora il
-ritorno di `reconformFile`, quindi non c'era dipendenza reale da B. Restano i
-check manuali in `YOUDO.md` e `npm run build` fuori sandbox.
-
-Perché: creare a mano un template richiede di ricordare il `templateBasename`
-configurato e di posizionare il file nella cartella giusta. Una voce nel menu
-contestuale della cartella rende l'azione scopribile, esplicita e disponibile
-anche su mobile (long-press); la stessa azione è esposta in command palette per
-la cartella della nota attiva, così chi lavora da tastiera non deve passare dal
-file explorer. La distinzione root/child rende inoltre visibile se l'azione
-inizierà una cascata o estenderà il template parent.
-
-Comportamento:
-- solo menu di una `TFolder` (in pratica il file explorer), non il menu di un
-  file: il flusso è template prima, note dopo;
-- command palette: `Create cascade template in current folder` agisce sulla
-  cartella della nota attiva (non su una selezione del file explorer, che non
-  ha API pubblica); senza una nota attiva il comando è disabilitato via
-  `checkCallback` e non ripiega sulla root del vault;
-- command palette: `Navigate to parent template` apre in una nuova tab il
-  template di riferimento della nota attiva (per un template, il parent), con
-  la stessa risoluzione del pannello (`getTemplateOfFile`); senza nota attiva o
-  senza template il comando è disabilitato;
-- template locale assente e nessun template antenato:
-  `New root cascade template`, icona `file-plus`;
-- template locale assente ma template antenato presente:
-  `New child cascade template`, stessa icona: erediterà le
-  proprietà dal parent. "Root" significa inizio della cascata, non root del
-  vault;
-- template locale presente: voce disabled
-  `Cascade template already in folder`, icona neutra (`file`, non
-  `file-check` per non sovrapporsi alla semantica di conformità), nessun click;
-  serve solo a segnalare l'esistenza, anche se il file non è visibile. Il
-  titolo resta generico, senza distinzione root/child; da palette il comando
-  resta eseguibile e mostra una Notice con il path esistente in tono d'errore
-  (`--text-error`), perché un comando disabilitato non spiegherebbe il motivo;
-- un template root nasce con il placeholder `edit:` in frontmatter (non ha un
-  parent da cui ereditare): è una scelta intenzionale, perché con un frontmatter
-  vuoto Obsidian non materializza la GUI delle proprietà; un template child
-  nasce vuoto e riceve subito le proprietà del template antenato più vicino,
-  anche con auto-apply `off`: è un'azione esplicita, non una cascata automatica;
-- il body segue auto-apply: `off`/`properties` → body vuoto, `full` → body del
-  parent copiato dal listener esistente. Il seed immediato del body non serve e
-  non è previsto: con il guard Templater auto-apply resta sicuro;
-- le espressioni `<% %>` restano raw: la destinazione è un template;
-- apertura in una nuova tab; path normalizzato anche per la root del vault.
-
-Note implementative:
-- prima di `vault.create`, registrare il path nella `Set` pubblica
-  `files_with_pending_templates` dell'istanza Templater (via il resolver già in
-  `templaterBridge.ts`) e rilasciarlo in `finally` dopo circa 1 s, anche se
-  `vault.create` fallisce. È la stessa guardia che Templater usa per i propri
-  template: al passaggio a ~300 ms salta il file,
-  quindi il nuovo template resta raw e non viene sovrascritto né valutato. Se il
-  campo non esiste, C funziona lo stesso e al massimo logga in debug: nessun
-  fallback a timer o a scritture ritardate;
-- riusare `reconformFile(created, "add-missing")` dopo `vault.create` per il
-  seed delle proprietà: stesso motore della UI, già template-safe. C ignora il
-  nuovo ritorno `{before, changes, changed}`: gli basta che il file sia stato
-  creato;
-- il seed legge il parent diretto, non fonde l'intera catena: un parent non
-  conforme resta un errore della dashboard;
-- la distinzione root/child usa lo stesso walk sincrono di `getTemplateOfFile`:
-  nessun costo aggiuntivo;
-- `folderTemplateMenu.ts` possiede la voce di menu e il runner di creazione
-  condiviso; `templateCommands.ts` registra i due comandi con `checkCallback` e
-  risolve il target al momento dell'invocazione (`getActiveFile` →
-  `getTemplateOfFile`), mai una cache di `TFile`; la verifica dal vivo (voce di
-  menu, raggruppamento, long-press mobile, palette) è tracciata in `YOUDO.md`;
-- la Notice "template già presente" da palette colora solo `messageEl` con
-  `--text-error` (classe `cascade-templates-notice-error` in `styles.css`): il
-  contenitore resta quello nativo, leggibile su ogni tema;
-- `ROOT_TEMPLATE_PLACEHOLDER` (`---` / `edit:` / `---`) viene usato solo
-  quando `getTemplateOfFolder(folder)` è vuoto, cioè per i root; `edit` è una
-  proprietà reale e segue la cascata come tutte le altre: "sporcare" il
-  frontmatter è intenzionale, perché è l'unico modo per materializzare la GUI
-  delle proprietà quando non c'è nulla da ereditare;
-- aggiornare README e descrizione della setting auto-apply: l'azione esplicita
-  eredita le proprietà anche con auto-apply disattivato.
-
-Criteri di completamento:
-- desktop e mobile (verifica tracciata in `YOUDO.md`); `off`, `properties`,
-  `full`;
-- root del vault, root di cascata e cartelle child;
-- cartella con template locale, con solo template antenato, senza nessuno dei
-  due;
-- template root con placeholder `edit:` e GUI delle proprietà visibile; template
-  child senza placeholder;
-- command palette su desktop e mobile: create (root, child, template già
-  presente con Notice rossa, nessuna nota attiva → disabilitato) e navigate
-  (nota con template, template con parent, nota senza template → disabilitato);
-- `npm run build` e `npm test` verdi;
-- con Templater attivo, `trigger_on_file_creation` acceso e
-  `files_with_pending_templates` presente, il template appena creato resta raw:
-  nessuna espressione `<% %>` valutata e nessun overwrite al passaggio a ~300 ms
-  (verifica tracciata in `YOUDO.md`);
-- documentazione utente aggiornata;
-- voce spostata in `PROJECT.md` e rimossa da `FEATURES.md`.
-
-Aperti:
-- se il template esiste, valutare un `Open template` separato in una sezione
-  `view` (non nello slot create);
-- se differenziare anche il disabled (`Root/Child template already exists`) o
-  lasciarlo generico come da design attuale;
-- se, da palette, un template già presente debba essere aperto invece di
-  limitarsi alla Notice.
-
 ## (D) Interfaces (ct-interfaces)
 
-Stato: spec — minor dedicata, ultima in ordine dopo B e C, con due decisioni
+Stato: spec — minor dedicata, ultima in ordine dopo B, con due decisioni
 locali ancora aperte (eccezione value-level di `ct-interfaces` e politica dei
 link non risolti).
 
