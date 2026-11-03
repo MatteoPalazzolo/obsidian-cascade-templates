@@ -698,10 +698,10 @@ Comportamento:
   resta eseguibile e mostra una Notice con il path esistente in tono d'errore
   (`--text-error`), perché un comando disabilitato non spiegherebbe il motivo;
 - un template root nasce con il placeholder `edit:` in frontmatter (non ha un
-  parent da cui ereditare), così Obsidian mostra subito la GUI delle proprietà;
-  un template child nasce vuoto e riceve subito le proprietà del template
-  antenato più vicino, anche con auto-apply `off`: è un'azione esplicita, non
-  una cascata automatica;
+  parent da cui ereditare): è una scelta intenzionale, perché con un frontmatter
+  vuoto Obsidian non materializza la GUI delle proprietà; un template child
+  nasce vuoto e riceve subito le proprietà del template antenato più vicino,
+  anche con auto-apply `off`: è un'azione esplicita, non una cascata automatica;
 - il body segue auto-apply: `off`/`properties` → body vuoto, `full` → body del
   parent copiato dal listener esistente. Il seed immediato del body non serve e
   non è previsto: con il guard Templater auto-apply resta sicuro;
@@ -735,8 +735,9 @@ Note implementative:
   contenitore resta quello nativo, leggibile su ogni tema;
 - `ROOT_TEMPLATE_PLACEHOLDER` (`---` / `edit:` / `---`) viene usato solo
   quando `getTemplateOfFolder(folder)` è vuoto, cioè per i root; `edit` è una
-  proprietà reale, quindi se non viene rinominata o rimossa entra nella cascata
-  ed è ereditata dalle note;
+  proprietà reale e segue la cascata come tutte le altre: "sporcare" il
+  frontmatter è intenzionale, perché è l'unico modo per materializzare la GUI
+  delle proprietà quando non c'è nulla da ereditare;
 - aggiornare README e descrizione della setting auto-apply: l'azione esplicita
   eredita le proprietà anche con auto-apply disattivato.
 
@@ -765,9 +766,7 @@ Aperti:
 - se differenziare anche il disabled (`Root/Child template already exists`) o
   lasciarlo generico come da design attuale;
 - se, da palette, un template già presente debba essere aperto invece di
-  limitarsi alla Notice;
-- se il placeholder `edit` debba essere rimosso automaticamente alla prima
-  modifica o restare una proprietà reale (oggi lo è, quindi viene ereditata).
+  limitarsi alla Notice.
 
 ## (D) Interfaces (ct-interfaces)
 
