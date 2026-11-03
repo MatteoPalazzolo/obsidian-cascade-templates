@@ -69,7 +69,7 @@ function addFolderTemplateMenuItem(plugin: Plugin, menu: Menu, folder: TFolder):
 
 	menu.addItem(item => item
 		.setTitle(title)
-		.setIcon("file-plus")
+		.setIcon(parent ? "file-plus" : "crown")
 		// .setSection("cascade-templates")
 		.onClick(() => createFolderTemplateInFolder(plugin, folder)));
 }
@@ -104,6 +104,17 @@ function templatePath(folder: TFolder): string {
 }
 
 /**
+ * AI: Initial content of a ROOT template.
+ *
+ * A root template has no parent to inherit properties from, so it would be
+ * created with an empty frontmatter and Obsidian would render no property row
+ * to edit. A key with an empty value forces the properties GUI to appear; the
+ * user renames or replaces it in place. Child templates do not use it: their
+ * parent's properties are seeded immediately by `reconformFile`.
+ */
+const ROOT_TEMPLATE_PLACEHOLDER = "---\nedit:\n---\n";
+
+/**
  * AI: Creates and opens the template. The re-check guards a race with another
  * tab; the Templater guard is released in `finally` even when creation fails.
  */
@@ -113,10 +124,14 @@ async function createFolderTemplate(plugin: Plugin, folder: TFolder): Promise<vo
 
 	if (app.vault.getAbstractFileByPath(path)) return;
 
+	// `getTemplateOfFolder` walks the ancestors only (the local template does not
+	// exist yet), so a hit means this is a child template.
+	const initialContent = getTemplateOfFolder(folder) ? "" : ROOT_TEMPLATE_PLACEHOLDER;
+
 	const release = holdTemplaterPendingTemplate(app, path);
 	let created: TFile | null = null;
 	try {
-		created = await app.vault.create(path, "");
+		created = await app.vault.create(path, initialContent);
 	} finally {
 		release();
 	}

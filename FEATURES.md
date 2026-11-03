@@ -697,9 +697,11 @@ Comportamento:
   titolo resta generico, senza distinzione root/child; da palette il comando
   resta eseguibile e mostra una Notice con il path esistente in tono d'errore
   (`--text-error`), perché un comando disabilitato non spiegherebbe il motivo;
-- il file nasce vuoto e riceve subito le proprietà del template antenato più
-  vicino, anche con auto-apply `off`: è un'azione esplicita, non una cascata
-  automatica;
+- un template root nasce con il placeholder `edit:` in frontmatter (non ha un
+  parent da cui ereditare), così Obsidian mostra subito la GUI delle proprietà;
+  un template child nasce vuoto e riceve subito le proprietà del template
+  antenato più vicino, anche con auto-apply `off`: è un'azione esplicita, non
+  una cascata automatica;
 - il body segue auto-apply: `off`/`properties` → body vuoto, `full` → body del
   parent copiato dal listener esistente. Il seed immediato del body non serve e
   non è previsto: con il guard Templater auto-apply resta sicuro;
@@ -715,10 +717,10 @@ Note implementative:
   quindi il nuovo template resta raw e non viene sovrascritto né valutato. Se il
   campo non esiste, C funziona lo stesso e al massimo logga in debug: nessun
   fallback a timer o a scritture ritardate;
-- riusare `reconformFile(created, "add-missing")` dopo `vault.create(path, "")`
-  per il seed delle proprietà: stesso motore della UI, già template-safe. C
-  ignora il nuovo ritorno `{before, changes, changed}`: gli basta che il file sia
-  stato creato;
+- riusare `reconformFile(created, "add-missing")` dopo `vault.create` per il
+  seed delle proprietà: stesso motore della UI, già template-safe. C ignora il
+  nuovo ritorno `{before, changes, changed}`: gli basta che il file sia stato
+  creato;
 - il seed legge il parent diretto, non fonde l'intera catena: un parent non
   conforme resta un errore della dashboard;
 - la distinzione root/child usa lo stesso walk sincrono di `getTemplateOfFile`:
@@ -731,6 +733,10 @@ Note implementative:
 - la Notice "template già presente" da palette colora solo `messageEl` con
   `--text-error` (classe `cascade-templates-notice-error` in `styles.css`): il
   contenitore resta quello nativo, leggibile su ogni tema;
+- `ROOT_TEMPLATE_PLACEHOLDER` (`---` / `edit:` / `---`) viene usato solo
+  quando `getTemplateOfFolder(folder)` è vuoto, cioè per i root; `edit` è una
+  proprietà reale, quindi se non viene rinominata o rimossa entra nella cascata
+  ed è ereditata dalle note;
 - aggiornare README e descrizione della setting auto-apply: l'azione esplicita
   eredita le proprietà anche con auto-apply disattivato.
 
@@ -740,6 +746,8 @@ Criteri di completamento:
 - root del vault, root di cascata e cartelle child;
 - cartella con template locale, con solo template antenato, senza nessuno dei
   due;
+- template root con placeholder `edit:` e GUI delle proprietà visibile; template
+  child senza placeholder;
 - command palette su desktop e mobile: create (root, child, template già
   presente con Notice rossa, nessuna nota attiva → disabilitato) e navigate
   (nota con template, template con parent, nota senza template → disabilitato);
@@ -757,7 +765,9 @@ Aperti:
 - se differenziare anche il disabled (`Root/Child template already exists`) o
   lasciarlo generico come da design attuale;
 - se, da palette, un template già presente debba essere aperto invece di
-  limitarsi alla Notice.
+  limitarsi alla Notice;
+- se il placeholder `edit` debba essere rimosso automaticamente alla prima
+  modifica o restare una proprietà reale (oggi lo è, quindi viene ereditata).
 
 ## (D) Interfaces (ct-interfaces)
 

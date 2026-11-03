@@ -8,3 +8,4 @@ Formato: `- [ ] <controllo> — <come/dove eseguirlo> (origine: <file:riga>)`.
 
 ---
 
+
