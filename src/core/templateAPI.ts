@@ -7,6 +7,7 @@ import {
 	computeTemplateConformance,
 	type ReconformMode,
 } from "./conformance";
+import { diffProps, isRemoved, type PropertyChange } from "./frontmatterChanges";
 import {
 	evaluateTemplaterContent,
 	evaluateTemplaterValue,
@@ -16,7 +17,7 @@ import {
 import { isTemplaterEvaluationEnabled } from "./templaterConsent";
 
 // AI: pure computations live in `./conformance`; re-exported for the panel and
-// the scanner, which historically imported them from this module.
+// the dashboard, which historically imported them from this module.
 export { computeReconformProps, computeTemplateConformance } from "./conformance";
 export type { ReconformMode } from "./conformance";
 
@@ -34,6 +35,33 @@ function getCtx(): Plugin {
 		throw new Error("PluginContext non inizializzato! Chiama init(this) nel metodo onload().");
 	}
 	return ctx;
+}
+
+/**
+ * AI: Serial write queue per vault path.
+ *
+ * The panel, the dashboard and Back can all target the same file. A per-path
+ * promise chain makes the writes sequential, so the second operation re-reads
+ * the result of the first instead of overwriting it with a stale map.
+ */
+const pathQueues = new Map<string, Promise<unknown>>();
+
+async function withPathLock<T>(path: string, task: () => Promise<T>): Promise<T> {
+	const previous = pathQueues.get(path) ?? Promise.resolve();
+	let release: () => void = () => undefined;
+	const current = new Promise<void>(resolve => {
+		release = resolve;
+	});
+	const tail = previous.then(() => current, () => current);
+	pathQueues.set(path, tail);
+
+	await previous.catch(() => undefined);
+	try {
+		return await task();
+	} finally {
+		release();
+		if (pathQueues.get(path) === tail) pathQueues.delete(path);
+	}
 }
 
 /**
@@ -151,7 +179,7 @@ export function getActiveMarkdownFile() {
 
 /**
  * Legge le proprietà del frontmatter dalla cache dei metadata di Obsidian.
- * Versione sincrona, adatta ad operazioni massive (es. scanner).
+ * Versione sincrona, adatta ad operazioni massive (es. dashboard).
  *
  * AI: NOTE — Obsidian injects a synthetic `position` key ({ start, end }) into
  * cached frontmatter. Callers that compare/merge key sets must ignore it, so
@@ -166,9 +194,9 @@ export function getFilePropsFromCache(file: TFile | undefined): Record<string, u
  * AI: Ordered `Map` view of a file's cached frontmatter.
  *
  * Role in the architecture:
- * Synchronous, cheap accessor used by the scanner and the metadata panel. It
+ * Synchronous, cheap accessor used by the dashboard and the metadata panel. It
  * reuses the exact same key set/ordering rules as the disk-reading
- * `getFileProps`, so UI and scanner agree on what "the file's properties" are.
+ * `getFileProps`, so UI and dashboard agree on what "the file's properties" are.
  * The synthetic `position` key added by Obsidian is dropped here.
  */
 export function getFilePropsMapFromCache(file: TFile | undefined): Map<string, unknown> {
@@ -247,7 +275,11 @@ export async function getFileProps(file: TFile | undefined): Promise<Map<string,
  */
 export async function setFileProps(file: TFile | undefined, newPropsMap: Map<string, unknown>): Promise<void> {
 	if (!file) return;
+	await withPathLock(file.path, () => writePropsUnlocked(file, newPropsMap));
+}
 
+/** AI: Unlocked body of `setFileProps`; callers inside a path lock use this. */
+async function writePropsUnlocked(file: TFile, newPropsMap: Map<string, unknown>): Promise<void> {
 	const rawContent = await getCtx().app.vault.read(file);
 	const markdownBody = stripFrontmatter(rawContent).replace(/^\r?\n/, '');
 	await getCtx().app.vault.modify(file, composeFileContent(newPropsMap, markdownBody));
@@ -300,33 +332,98 @@ function stripFrontmatter(content: string): string {
 }
 
 /**
+ * AI: Result of a reconform write.
+ *
+ * `before` is the whole frontmatter as it was on disk, `changes` the keys the
+ * write touched (removals included) and `changed` whether a write happened.
+ * The dashboard journal and the panel consume this; callers that only care
+ * about "did it write?" read `changed`.
+ */
+export interface ReconformResult {
+	before: Map<string, unknown>;
+	changes: PropertyChange[];
+	changed: boolean;
+}
+
+/**
  * AI: Applies one reconform phase to a file on disk.
  *
- * Returns `true` only when the file actually changed, so the caller can decide
- * whether to refresh the panel (and whether to push a Back snapshot).
+ * Returns the before-map and the authoritative change list so the dashboard can
+ * journal the operation without re-reading the file. A file with no reference
+ * (template root, note outside a cascade) is left untouched.
  */
-export async function reconformFile(file: TFile | undefined, mode: ReconformMode): Promise<boolean> {
-	if (!file) return false;
+export async function reconformFile(file: TFile | undefined, mode: ReconformMode): Promise<ReconformResult> {
+	if (!file) return { before: new Map(), changes: [], changed: false };
 
-	const templateFile = getTemplateOfFile(file);
-	if (!templateFile) return false;
+	return withPathLock(file.path, async () => {
+		const templateFile = getTemplateOfFile(file);
+		if (!templateFile) {
+			return { before: await getFileProps(file), changes: [], changed: false };
+		}
 
-	const currentProps = await getFileProps(file);
-	const templateProps = await getFileProps(templateFile);
+		const currentProps = await getFileProps(file);
+		const templateProps = await getFileProps(templateFile);
 
-	const nextProps = computeReconformProps(templateProps, currentProps, mode);
+		const nextProps = computeReconformProps(templateProps, currentProps, mode);
 
-	// Nothing to write: skip the modify() to avoid needless cache churn/events.
-	if (areMapsEqual(currentProps, nextProps)) return false;
+		// Nothing to write: skip the modify() to avoid needless cache churn/events.
+		if (areMapsEqual(currentProps, nextProps)) {
+			return { before: currentProps, changes: [], changed: false };
+		}
 
-	// AI: only pay the (possibly side-effecting) Templater step when the merge
-	// already changed something — see the helper below.
-	const resolvedProps = await resolveTemplaterExpressions(file, nextProps);
+		// AI: only pay the (possibly side-effecting) Templater step when the merge
+		// already changed something — see the helper below.
+		const resolvedProps = await resolveTemplaterExpressions(file, nextProps);
 
-	if (areMapsEqual(currentProps, resolvedProps)) return false;
+		if (areMapsEqual(currentProps, resolvedProps)) {
+			return { before: currentProps, changes: [], changed: false };
+		}
 
-	await setFileProps(file, resolvedProps);
-	return true;
+		await writePropsUnlocked(file, resolvedProps);
+		return {
+			before: currentProps,
+			changes: diffProps(currentProps, resolvedProps),
+			changed: true,
+		};
+	});
+}
+
+/**
+ * AI: Applies a scoped frontmatter patch atomically (`vault.process`).
+ *
+ * Used by the journal rewind: only the keys in `patch` are written, everything
+ * else on the file survives. `REMOVED` deletes the key. The function returns the
+ * frontmatter before and after so a failed entry can be diagnosed without a
+ * second read.
+ */
+export async function applyFrontmatterPatch(
+	file: TFile,
+	patch: ReadonlyMap<string, unknown>
+): Promise<{ before: Map<string, unknown>; after: Map<string, unknown>; changed: boolean }> {
+	return withPathLock(file.path, async () => {
+		let before = new Map<string, unknown>();
+		let after = new Map<string, unknown>();
+		let changed = false;
+
+		await getCtx().app.vault.process(file, data => {
+			before = parseFrontmatterProps(data);
+			after = new Map(before);
+
+			for (const [key, value] of patch.entries()) {
+				if (isRemoved(value)) {
+					after.delete(key);
+				} else {
+					after.set(key, value);
+				}
+			}
+
+			if (areMapsEqual(before, after)) return data;
+			changed = true;
+			return composeFileContent(after, stripFrontmatter(data));
+		});
+
+		return { before, after, changed };
+	});
 }
 
 /**

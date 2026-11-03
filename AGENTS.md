@@ -4,7 +4,7 @@
 Obsidian plugin "Cascade Templates" (`manifest.json` id `cascade-templates`).
 TypeScript source bundled by esbuild into `main.js`. Single package, plus a pure-core test suite.
 
-Riferimento di progetto: `PROJECT.md` (dominio, UI, auto-apply, scanner, stato e mappa dei moduli). `README.md` è la documentazione utente. Leggi `PROJECT.md` prima di modificare il comportamento del plugin.
+Riferimento di progetto: `PROJECT.md` (dominio, UI, auto-apply, dashboard, stato e mappa dei moduli). `README.md` è la documentazione utente. Leggi `PROJECT.md` prima di modificare il comportamento del plugin.
 
 `FEATURES.md` è il workbench delle feature non ancora concluse: restano lì finché non sono completate, poi si spostano in `PROJECT.md` (archivio della documentazione) e si rimuovono. `PROJECT.md` non anticipa mai feature non completate.
 
@@ -30,7 +30,7 @@ Riferimento di progetto: `PROJECT.md` (dominio, UI, auto-apply, scanner, stato e
 ## Conventions
 - `tsconfig` `baseUrl "."`: `main.ts` imports use `src/...`, files under `src/` use relative imports. Match neighbors.
 - `types/` no longer augments `Set`: TC39 set methods are replaced by `src/core/setOperations.ts`.
-- `styles.css` uses native CSS nesting keyed by modal class (e.g. `.ScannerModal`).
+- `styles.css` uses native CSS nesting keyed by modal class (e.g. `.CascadeDashboardModal`).
 - Comments: role-level comments are expected (vedi User Guidelines); sorgenti e stringhe UI in inglese, commenti anche in italiano.
 
 ## Obsidian Guidelines
@@ -47,7 +47,7 @@ Riferimento di progetto: `PROJECT.md` (dominio, UI, auto-apply, scanner, stato e
 - se è presente NEXT.md, consideralo readonly: sono considerazioni a caldo non strutturate a cui attingere a inizio sessione
 - non toccare mai comandi di github in scrittura, ho disabilitato la scrittura nella cartella .git, ogni tentativo sarà negato, voglio avere controllo completo del versioning in autonomia
 - commenta estensivamente sia file che codice descrivendo il ruolo svolto da file, funzioni e classi all'interno dell'architettura, in modo da orientarti con uno sguardo ad alto livello
-- il prodotto deve risultare NON invasivo: nessuna soluzione automatica di reconform a cascata se non specificata da una feature gestita dall'UI (per esempio lo scanner); le automazioni in una nota devono restare circoscritte alla nota stessa
+- il prodotto deve risultare NON invasivo: nessuna soluzione automatica di reconform a cascata se non specificata da una feature gestita dall'UI (per esempio la dashboard); le automazioni in una nota devono restare circoscritte alla nota stessa
 
 ## Env
 - generalmente aspettati che io abbia eseguito `npm run dev` da un ambiente windows, il watch si occuperà di fare una build dev a ogni nuova modifica

@@ -10,8 +10,10 @@ import {
 } from 'src/core/reconformHistory';
 import { maybeShowTemplaterNotice } from 'src/core/templaterConsent';
 import * as MetadataPanel from 'src/features/metadataPanel';
+import { disposeDashboard, initDashboard, openDashboard } from 'src/features/dashboard';
 import { registerFolderTemplateMenu } from 'src/features/folderTemplateMenu';
 import { registerTemplateCommands } from 'src/features/templateCommands';
+import { resolvableIcon } from 'src/utils/icons';
 import {
 	CascadeTemplatesSettingTab,
 	initSettings,
@@ -40,6 +42,20 @@ export default class extends Plugin {
 		MetadataPanel.init(this);
 		registerFolderTemplateMenu(this);
 		registerTemplateCommands(this);
+		initDashboard(this);
+
+		// B: the dashboard is the single explicit surface of the plugin. The
+		// ribbon icon and the command are placeholders until the final naming.
+		this.addRibbonIcon(
+			resolvableIcon("git-fork"),
+			"Open cascade dashboard",
+			() => openDashboard(this.app)
+		);
+		this.addCommand({
+			id: "open-cascade-dashboard",
+			name: "Open cascade dashboard",
+			callback: () => openDashboard(this.app),
+		});
 
 		this.addSettingTab(new CascadeTemplatesSettingTab(this));
 
@@ -58,6 +74,7 @@ export default class extends Plugin {
 		disposeTemplateAPI();
 		MetadataPanel.clear();
 		disposeHistory();
+		disposeDashboard();
 	}
 
 }

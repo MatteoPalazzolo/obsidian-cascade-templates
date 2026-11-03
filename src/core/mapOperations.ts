@@ -82,7 +82,7 @@ export function areMapsEqual(first: Map<string, unknown>, second: Map<string, un
 }
 
 /** AI: Best-effort deep value comparison, cheap for scalar frontmatter values. */
-function areValuesEqual(first: unknown, second: unknown): boolean {
+export function areValuesEqual(first: unknown, second: unknown): boolean {
 	if (first === second) return true;
 
 	const areObjects = typeof first === 'object' && first !== null

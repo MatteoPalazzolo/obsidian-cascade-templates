@@ -1,156 +1,184 @@
-import { MarkdownView, Plugin, TFile } from "obsidian";
+import { MarkdownView, Plugin, TFile, Workspace } from "obsidian";
 import { areMapsEqual } from "./mapOperations";
+import {
+	createSession,
+	sessionBack,
+	sessionEnd,
+	sessionHasHistory,
+	sessionPush,
+	sessionSetPhase,
+	sweepSessions,
+	type SessionSnapshot,
+	type SessionState,
+} from "./reconformSession";
 import { getFileProps, setFileProps } from "./templateAPI";
 
 /**
- * AI: Back history for the metadata panel (B2, rewritten for the H1-H2 cursor).
+ * AI: Back history for the metadata panel (feature B, path-keyed sessions).
  *
  * Role in the architecture:
- * This module is the "memory" behind the panel's Back button, kept separate
- * from the features layer so it can be reasoned about (and reverted) on its own.
+ * This module is the I/O adapter around the pure `reconformSession` model. The
+ * session belongs to the NOTE, not to the view: two tabs showing the same note
+ * share the stack and the cursor, while a different note has its own session.
+ * That is why the map is keyed by path instead of `MarkdownView`.
  *
- * Semantics (the phase cursor model):
- * - The reconform button walks a fixed sequence (Add missing → Remove extra →
- *   Clear). EVERY live press pushes a snapshot, even when the press was a no-op.
- * - A snapshot captures the frontmatter AND the cursor phase as they were
- *   BEFORE the press. Back therefore reverses the last reconform press and
- *   steps the cursor back by one phase. When the props did not change, the disk
- *   write is skipped but the cursor still moves.
- * - One independent stack per `MarkdownView`, so two panes showing two files
- *   never share history.
- * - The stack survives tab switches and active-leaf changes: moving focus
- *   around must NOT erase it.
- * - The stack is dropped only when the view is closed (the `WeakMap` key
- *   becomes unreachable and the whole entry is collected) or when a different
- *   file replaces the current one in that same view.
- *
- * The "file replaced" case is handled lazily: every API call re-checks the
- * view's current file against the file the snapshots belong to, and drops the
- * stack on mismatch. `registerHistoryLifecycle` additionally wires workspace
- * events so the drop is detected eagerly and listeners are notified (B3).
+ * Lifecycle:
+ * - the stack is dropped when the note is no longer shown by any tab;
+ * - an external frontmatter write ends the session (the panel calls
+ *   `endSession` when it detects a real content change);
+ * - closing the last tab of a note forgets it, so reopening starts empty;
+ * - `onunload` clears the listeners; the map dies with the plugin instance.
  */
 
-/**
- * AI: One Back step: the frontmatter and the cursor phase as they were before a
- * press, plus the file they belong to.
- */
-export interface ReconformSnapshot {
+/** AI: One Back step: frontmatter and cursor before a press. */
+export interface ReconformSnapshot extends SessionSnapshot {
 	file: TFile;
-	props: Map<string, unknown>;
-	/** AI: Cursor phase before the press that created this snapshot (0..2). */
-	phase: number;
 }
 
-/** AI: Callback fired whenever a view's stack changes (push/back/clear/prune). */
+/** AI: Callback fired whenever a note's stack changes (push/back/end/prune). */
 export type HistoryChangeListener = (view: MarkdownView, hasHistory: boolean) => void;
 
-/**
- * AI: Per-view snapshot stacks. A `WeakMap` is what makes "closed view ⇒
- * forgotten history" free: once Obsidian drops the view, the entry (and the
- * `TFile` references it holds) becomes garbage-collectable.
- */
-const stacks = new WeakMap<MarkdownView, ReconformSnapshot[]>();
+/** AI: Sessions keyed by note path. */
+const sessions = new Map<string, SessionState>();
 
 /** AI: Subscribers of stack changes; used by the Back button to stay in sync. */
 const listeners = new Set<HistoryChangeListener>();
 
-/**
- * AI: Drops the stack of `view` when it now points at a different file.
- * Returns `true` when something was actually discarded.
- */
-function pruneStale(view: MarkdownView): boolean {
-	const stack = stacks.get(view);
-	if (!stack || stack.length === 0) return false;
+/** AI: Workspace handle, set by `registerHistoryLifecycle` in `onload`. */
+let workspace: Workspace | undefined;
 
-	const currentFile = view.file;
-	// `stack.length > 0` is guaranteed above; optional chaining satisfies
-	// `noUncheckedIndexedAccess` without an assertion.
-	const snapshotFile = stack[stack.length - 1]?.file;
-	if (!snapshotFile) return false;
+/** AI: Open markdown views, used to fan a per-note change out to every tab. */
+function openViews(): MarkdownView[] {
+	if (!workspace) return [];
+	const views: MarkdownView[] = [];
+	// Includes popout windows and floating leaves: a session must survive when
+	// the only tab showing the note lives outside the main area.
+	workspace.iterateAllLeaves(leaf => {
+		if (leaf.view instanceof MarkdownView && leaf.view.file) views.push(leaf.view);
+	});
+	return views;
+}
 
-	// Same path ⇒ same note (Obsidian may hand back a distinct TFile instance
-	// for the same file, so compare paths, not object identity).
-	const stillSameFile = currentFile !== null && currentFile.path === snapshotFile.path;
-
-	if (!stillSameFile) {
-		stacks.delete(view);
-		return true;
+/** AI: Paths currently shown by at least one markdown view. */
+function visiblePaths(): Set<string> {
+	const paths = new Set<string>();
+	for (const view of openViews()) {
+		const path = view.file?.path;
+		if (path) paths.add(path);
 	}
-	return false;
+	return paths;
 }
 
-/** AI: Prune + notify in one step, used by the event-driven paths. */
-function pruneAndNotify(view: MarkdownView): void {
-	if (pruneStale(view)) notify(view);
+/** AI: Drops the sessions of notes no tab shows any more. */
+function sweep(): void {
+	sweepSessions(sessions, visiblePaths());
 }
 
-/** AI: Tells every listener the current Back availability of `view`. */
+/** AI: Session of the note shown by `view`, or null without a markdown file. */
+function sessionOf(view: MarkdownView, create: boolean): SessionState | null {
+	const path = view.file?.path;
+	if (!path) return null;
+
+	const existing = sessions.get(path);
+	if (existing) return existing;
+	if (!create) return null;
+
+	const created = createSession();
+	sessions.set(path, created);
+	return created;
+}
+
+/** AI: Notifies every tab showing `path` (the session is shared by all of them). */
+function notifyPath(path: string): void {
+	const hasHistory = sessionHasHistory(sessions.get(path) ?? createSession());
+	for (const view of openViews()) {
+		if (view.file?.path !== path) continue;
+		for (const listener of [...listeners]) listener(view, hasHistory);
+	}
+}
+
 function notify(view: MarkdownView): void {
-	const hasHistory = (stacks.get(view)?.length ?? 0) > 0;
-	// Iterate over a copy: a listener could (un)subscribe while being called.
-	for (const listener of [...listeners]) listener(view, hasHistory);
+	const path = view.file?.path;
+	if (path) notifyPath(path);
+}
+
+function notifyAllOpen(): void {
+	for (const view of openViews()) notify(view);
 }
 
 /**
- * AI: Snapshots the given frontmatter + cursor phase for `view` before an action.
- *
- * The caller passes the state read *before* mutating the note; the Map is
- * copied so later mutations of the caller's Map cannot rewrite the past.
- *
- * This is deliberately UNCONDITIONAL: even a no-op press leaves a step on the
- * stack, because the cursor always advances and Back must be able to rewind it.
+ * AI: Snapshots the given frontmatter + cursor phase for the note shown by
+ * `view`. The snapshot is UNCONDITIONAL: even a no-op press leaves a step,
+ * because the cursor always advances and Back must rewind it.
  */
 export function push(view: MarkdownView, props: Map<string, unknown>, phase: number): void {
+	const session = sessionOf(view, true);
 	const file = view.file;
-	if (!file) return;
+	if (!session || !file) return;
 
-	// A file switch invalidates whatever was stacked for the previous note.
-	pruneAndNotify(view);
-
-	const stack = stacks.get(view) ?? [];
-	stack.push({ file, props: new Map(props), phase });
-	stacks.set(view, stack);
-
+	sessionPush(session, props, phase);
 	notify(view);
 }
 
 /**
- * AI: Rewinds one step of `view`: pops the most recent snapshot, restores the
- * frontmatter and returns the snapshot so the UI can restore the cursor phase.
+ * AI: Rewinds one step of the note shown by `view`, restores the frontmatter
+ * and returns the snapshot so the UI can restore the cursor phase.
  *
  * The disk write is skipped when the snapshot matches what is already on disk
  * (a no-op press reversed): the cursor still rewinds, no needless `modify()`.
- * Returns `null` when there is nothing left to rewind.
  */
 export async function back(view: MarkdownView): Promise<ReconformSnapshot | null> {
-	pruneAndNotify(view);
+	const session = sessionOf(view, false);
+	const file = view.file;
+	if (!session || !file) return null;
 
-	const stack = stacks.get(view);
-	if (!stack || stack.length === 0) return null;
-
-	const snapshot = stack.pop();
+	const snapshot = sessionBack(session);
 	if (!snapshot) return null;
 
-	if (stack.length === 0) stacks.delete(view);
-
-	const currentProps = await getFileProps(snapshot.file);
+	const currentProps = await getFileProps(file);
 	if (!areMapsEqual(currentProps, snapshot.props)) {
-		await setFileProps(snapshot.file, snapshot.props);
+		await setFileProps(file, snapshot.props);
 	}
 
+	if (!sessionHasHistory(session)) sessionSetPhase(session, 0);
+
 	notify(view);
-	return snapshot;
+	return { ...snapshot, file };
 }
 
-/** AI: `true` when `view` has at least one step left to rewind. */
+/** AI: `true` when the note shown by `view` has at least one step to rewind. */
 export function hasHistory(view: MarkdownView): boolean {
-	pruneAndNotify(view);
-	return (stacks.get(view)?.length ?? 0) > 0;
+	const session = sessionOf(view, false);
+	return session ? sessionHasHistory(session) : false;
 }
 
-/** AI: Forgets the whole history of a single view (e.g. after a full reset). */
+/** AI: Shared cursor phase of the note shown by `view` (0 when no session). */
+export function getPhase(view: MarkdownView): number {
+	const session = sessionOf(view, false);
+	return session?.phase ?? 0;
+}
+
+/** AI: Writes the cursor phase on the note's session, so tabs stay in sync. */
+export function setPhase(view: MarkdownView, phase: number): void {
+	const session = sessionOf(view, true);
+	if (!session) return;
+	sessionSetPhase(session, phase);
+	notify(view);
+}
+
+/** AI: Ends the session of the note shown by `view` (stack + cursor). */
+export function endSession(view: MarkdownView): void {
+	const path = view.file?.path;
+	if (!path) return;
+	const session = sessions.get(path);
+	if (!session) return;
+	sessionEnd(session);
+	notifyPath(path);
+}
+
+/** AI: Backward-compatible alias used by the panel. */
 export function clear(view: MarkdownView): void {
-	if (stacks.delete(view)) notify(view);
+	endSession(view);
 }
 
 /**
@@ -165,31 +193,24 @@ export function onHistoryChange(listener: HistoryChangeListener): () => void {
 }
 
 /**
- * AI: Eager pruning (B2/B3). Detects file replacement as soon as it happens so
- * the Back button of the affected view updates without waiting for a UI call.
- *
- * - `file-open`: the pane that just received a file is the active one.
- * - `layout-change`: covers splits/closes and any other layout churn for every
- *   currently open markdown view.
- *
- * Closing a view needs no explicit handling: the `WeakMap` entry goes away with
- * the view itself.
+ * AI: Eager pruning (feature B). Detects file replacement, closed tabs and
+ * layout churn as soon as they happen, so the Back button of every affected
+ * view updates without waiting for a UI call.
  */
 export function registerHistoryLifecycle(plugin: Plugin): void {
-	const workspace = plugin.app.workspace;
+	workspace = plugin.app.workspace;
 
 	plugin.registerEvent(
 		workspace.on("file-open", () => {
-			const view = workspace.getActiveViewOfType(MarkdownView);
-			if (view) pruneAndNotify(view);
+			sweep();
+			notifyAllOpen();
 		})
 	);
 
 	plugin.registerEvent(
 		workspace.on("layout-change", () => {
-			for (const leaf of workspace.getLeavesOfType("markdown")) {
-				if (leaf.view instanceof MarkdownView) pruneAndNotify(leaf.view);
-			}
+			sweep();
+			notifyAllOpen();
 		})
 	);
 }
@@ -197,4 +218,6 @@ export function registerHistoryLifecycle(plugin: Plugin): void {
 /** AI: Releases the listeners subscribed by the UI (called from `onunload`). */
 export function disposeHistory(): void {
 	listeners.clear();
+	sessions.clear();
+	workspace = undefined;
 }

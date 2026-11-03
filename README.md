@@ -185,6 +185,22 @@ The reconform button in the properties toolbar cycles through three consecutive 
 
 Back undoes the last step and rewinds the button. Existing notes are never modified unless the button is pressed, and the toolbar can be hidden on notes that have no template.
 
+### Cascade dashboard
+
+**Open cascade dashboard** is available from the ribbon, the command palette and the `Cascade` button in the properties toolbar (which opens it already scoped to the current note). The dashboard is a modal, not a persistent view.
+
+By default it shows the **Cascade** map only: a read-only tree of local roots, folders, templates and notes, with the reference template of every local root and the number of notes outside any cascade. This is the safe mode: it never writes.
+
+The **Issues** and **History** tabs are **experimental and opt-in**. Enable **Issues and History tabs (experimental)** in the settings to get:
+
+- **Issues (N)**: only the branches with a problem, grouped as templates needing update, notes missing properties and notes with extra properties. `Update` is always available; `Align` is destructive and stays locked until every template in the chain up to the local root conforms. Actions touch only the keys described by the verb and never overwrite existing values that the template also defines.
+- **Fix all (N)**: runs `Update templates`, then `Update notes`, then `Align notes`, with one confirmation. It is not atomic: it stops at the first failed phase and every phase that writes remains a separate History entry.
+- **History (M)**: the dashboard operations of the current session, with undo. The journal lives in memory and dies when Obsidian closes; it is **not a backup**. Keep a copy of your vault elsewhere before using these actions.
+
+`ok` means “the same set of keys”, not “the same values”: a note with `status: draft` against a template with `status: published` is conformant. Template extra keys are expected specialization; they are never reported as an issue.
+
+The Back button of a note is a separate, note-local history: it never appears in the dashboard History and the dashboard never consumes it.
+
 ### Templater integration (optional, opt-in)
 
 Template properties and bodies may contain `<% … %>` expressions, which templates preserve verbatim. The bridge is **off by default**: enable it in the plugin settings, read the warning and confirm it in the dialog before any evaluation happens. When it is on, the plugin evaluates the expressions while writing to a note, so the note receives the resulting value instead of the raw expression; when it is off, the values are copied verbatim and the reconform tooltip points this out.
@@ -198,7 +214,8 @@ All behaviour is configured in the plugin settings, without any per-folder confi
 - template file name;
 - auto-apply mode (disabled, properties only, properties and body);
 - Templater bridge, opt-in and stored per device (requires the Templater community plugin);
-- toolbar visibility (always, or only when a template applies).
+- toolbar visibility (always, or only when a template applies);
+- experimental Issues and History tabs in the dashboard (opt-in, off by default).
 
 Each row can also be reached from Obsidian's global settings search.
 

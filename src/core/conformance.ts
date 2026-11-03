@@ -7,7 +7,7 @@ import { mergeSecondOnFirstMap } from "./mapOperations";
  * Role in the architecture:
  * These functions decide what a note/template *should* look like, without
  * touching Obsidian: no vault, no cache, no UI. `templateAPI` re-exports them
- * for the panel and the scanner, and F4 tests import this module directly.
+ * for the panel and the dashboard, and F4 tests import this module directly.
  */
 
 /** AI: The three executable reconform phases, in cursor order. */

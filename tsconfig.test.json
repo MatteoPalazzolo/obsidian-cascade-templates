@@ -13,6 +13,10 @@
 	"include": [
 		"src/core/setOperations.ts",
 		"src/core/mapOperations.ts",
-		"src/core/conformance.ts"
+		"src/core/conformance.ts",
+		"src/core/frontmatterChanges.ts",
+		"src/core/forest.ts",
+		"src/core/journal.ts",
+		"src/core/reconformSession.ts"
 	]
 }

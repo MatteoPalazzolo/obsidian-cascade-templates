@@ -9,10 +9,11 @@ import {
 	type ReconformMode,
 } from "../core/templateAPI";
 import { areMapsEqual, computeMapConformance, type MapConformanceStatus } from "../core/mapOperations";
-import { back, clear as clearHistory, hasHistory, onHistoryChange, push } from "../core/reconformHistory";
+import { back, clear as clearHistory, getPhase, hasHistory, onHistoryChange, push, setPhase } from "../core/reconformHistory";
 import { hasScriptSyntax, hasTemplaterSyntax, isTemplaterAvailable } from "../core/templaterBridge";
 import { isTemplaterEvaluationEnabled } from "../core/templaterConsent";
 import { getSettings, isTemplateFile } from "../settings";
+import { openDashboard } from "./dashboard";
 import { warnOnce } from "../utils/diagnostics";
 import { setIconSafe } from "../utils/icons";
 
@@ -105,6 +106,8 @@ export interface PanelUI {
 	reconformWarning: string | null;
 	/** AI: Back button (C4/H2): reverses the last reconform press. */
 	backEl: HTMLDivElement;
+	/** AI: B — opens the cascade dashboard scoped to the current note. */
+	dashboardEl: HTMLDivElement;
 	/**
 	 * AI: The native "Add property" button currently attached. Its CSS is
 	 * overridden to blend with our toolbar (styles.css), but only while the
@@ -369,7 +372,11 @@ function createPanel(view: MarkdownView): PanelUI {
 	reconform.el.classList.add(RECONFORM_CLASS);
 	const backBtn = createActionButton("undo-2", "Back", true);
 	backBtn.el.classList.add(BACK_CLASS);
-	actionsEl.append(reconform.el, backBtn.el);
+	const dashboardBtn = createActionButton("git-fork", "Cascade");
+	dashboardBtn.el.classList.add("cascade-templates-dashboard");
+	dashboardBtn.el.setAttribute("aria-label", "Open cascade dashboard");
+	dashboardBtn.el.title = "Open cascade dashboard";
+	actionsEl.append(reconform.el, backBtn.el, dashboardBtn.el);
 
 	const ui: PanelUI = {
 		view,
@@ -386,6 +393,7 @@ function createPanel(view: MarkdownView): PanelUI {
 		phase: 0,
 		phaseFile: null,
 		backEl: backBtn.el,
+		dashboardEl: dashboardBtn.el,
 		addButtonEl: null,
 		observer: null,
 		observedContainer: null,
@@ -393,6 +401,12 @@ function createPanel(view: MarkdownView): PanelUI {
 
 	reconform.el.addEventListener("click", (event) => void handleReconformClick(event, ui));
 	backBtn.el.addEventListener("click", (event) => void handleBackClick(event, ui));
+	dashboardBtn.el.addEventListener("click", (event) => {
+		event.preventDefault();
+		event.stopPropagation();
+		if (!app) return;
+		openDashboard(app, ui.view.file?.path);
+	});
 	statusEl.addEventListener("click", (event) => handleStatusClick(event, ui));
 	statusEl.addEventListener("keydown", (event) => handleStatusKeydown(event, ui));
 
@@ -852,13 +866,16 @@ function phaseMode(phase: ReconformPhase): ReconformMode | null {
 function ensureCursor(ui: PanelUI): void {
 	const path = ui.view.file?.path ?? null;
 	if (path !== ui.phaseFile) {
-		ui.phase = 0;
 		ui.phaseFile = path;
 		// Drop the previous file's props so a stale no-op classification cannot
 		// flash before the next refresh recomputes them.
 		ui.reconformCurrent = null;
 		ui.reconformReference = null;
 	}
+
+	// B: the cursor lives in the note's session, not in the view. Reading it on
+	// every refresh keeps two tabs on the same note in sync.
+	ui.phase = getPhase(ui.view) as ReconformPhase;
 }
 
 /** AI: H1 — restarts the sequence from the base phase and repaints the button. */
@@ -930,6 +947,7 @@ async function handleReconformClick(event: MouseEvent, ui: PanelUI): Promise<voi
 	// then clamp at the end so the sequence always starts at the base and stops
 	// on the last phase.
 	ui.phase = Math.min(ui.phase + 1, PHASE_DONE) as ReconformPhase;
+	setPhase(ui.view, ui.phase);
 
 	// Fresh: the metadata cache is not yet updated right after the write.
 	await refreshPanel(ui, true);
@@ -947,6 +965,7 @@ async function handleBackClick(event: MouseEvent, ui: PanelUI): Promise<void> {
 
 	// Back rewinds the cursor to the phase it had before the reversed press.
 	ui.phase = restored.phase as ReconformPhase;
+	setPhase(ui.view, ui.phase);
 
 	await refreshPanel(ui, true);
 }

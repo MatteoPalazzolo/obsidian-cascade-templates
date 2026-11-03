@@ -28,7 +28,7 @@ Documenti complementari:
 ## 3. Pannello Properties
 
 - Toolbar **per-view** (`WeakMap<MarkdownView, PanelUI>`): compare in ogni nota visibile, anche con split pane, non solo nella nota attiva.
-- Layout della riga: `[indicatore di stato] [Add property nativo] [reconform] [Back]`.
+- Layout della riga: `[indicatore di stato] [Add property nativo] [reconform] [Back] [Cascade]`.
   `Add property` è il pulsante nativo di Obsidian e non va replicato.
 - **Indicatore di stato**: icona derivata dalla conformità (nota: `circle-*`; template: `file-check` / `file-x` rispetto al parent; senza template: `circle-dashed`).
 - **Tooltip dell'indicatore**: stato corrente + percorso del template di riferimento.
@@ -47,7 +47,7 @@ Documenti complementari:
   - **Align**: rimuove le prop non presenti nel template, preserva i valori condivisi.
   - **Reset**: riporta il frontmatter esattamente ai default del template.
 - Stato UI **per-view** (`phase` 0..3): parte sempre dalla fase base; ogni click vivo avanza di una fase **anche se il contenuto non cambia**; dopo Reset il cursore si blocca e i click successivi sono inerti.
-- `reconformFile(file, mode)` è l'unico entry point; ritorna `true` solo se ha scritto.
+- `reconformFile(file, mode)` è l'unico entry point; ritorna `{before, changes, changed}` (`changed` è il vecchio booleano) e le scritture sono serializzate per path.
 - **Colori a 3 livelli**: attivo / no-op attenuato / disabled.
   - Una fase è no-op se `areMapsEqual(current, computeReconformProps(template, current, mode))`.
   - La fase Reset è no-op solo se il frontmatter coincide coi default, **non** se `status === 'ok'`.
@@ -56,22 +56,24 @@ Documenti complementari:
 
 ## 5. History / Back
 
-- Stack **per-view**: ogni pressione viva del reconform pusha uno snapshot **incondizionato** = frontmatter + fase **pre-press**.
+- Stack **per nota** (chiave = path, non `MarkdownView`): due tab sulla stessa nota condividono stack, cursore e stato del pulsante; note diverse hanno sessioni indipendenti.
+- Ogni pressione viva del reconform pusha uno snapshot **incondizionato** = frontmatter + fase **pre-press**.
 - Back poppa l'ultimo snapshot, ripristina frontmatter e fase; se le props coincidono con quelle su disco **salta la scrittura** ma muove comunque il cursore.
 - Back è abilitato solo se lo stack non è vuoto.
+- Il Back resta **locale alla nota** e volatile: non consuma il journal della dashboard, non compare nella sua History e non è toccato da eviction o rewind.
 
 ## 6. Sessione
 
-Cursore + stack Back = **una sessione** del pulsante. Si chiude (cursore → fase base, stack svuotato) quando:
+Cursore + stack Back = **una sessione** del pulsante, condivisa dalle tab che mostrano la stessa nota. Si chiude (cursore → fase base, stack svuotato) quando:
 
-- il frontmatter cambia **fuori dal pulsante** (edit manuale, sync, altri plugin, altro pannello);
-- la view mostra un **file diverso**;
-- la view viene **chiusa**;
+- il frontmatter cambia **fuori dal pulsante** (edit manuale, sync, altri plugin, **dashboard inclusa**);
+- **nessuna tab** mostra più la nota;
 - Back **svuota** lo stack.
 
 Dettagli:
 
 - Le scritture del pulsante **non** chiudono la sessione: ogni azione fa prima un refresh `fresh` che adotta le nuove props come **baseline**; il confronto con la baseline avviene solo su un reale cambio di contenuto (`metadataCache` `"changed"`).
+- Le scritture della dashboard sono scritture esterne per il pannello e chiudono la sessione della nota.
 - Il **body** della nota non conta: chiude solo un cambio di frontmatter.
 - Chiudere **non è un revert**: la history è scartata, lo stato corrente resta.
 - L'edit manuale è interpretato come **hand-off**: l'utente prende il controllo, la sessione guidata termina e il pulsante riparte da Update.
@@ -91,7 +93,7 @@ Dettagli:
 ## 8. Non invasività
 
 - Nessuna automazione a cascata; ogni azione è **circoscritta alla nota**.
-- Cascate solo su azione esplicita o feature dello scanner.
+- Cascate solo su azione esplicita (dashboard inclusa, dietro setting opt-in).
 - Il pannello non scrive mai senza un click dell'utente; l'auto-apply tocca solo file appena creati con body vuoto.
 
 ## 9. Compatibilità
@@ -151,36 +153,79 @@ Dettagli:
 - Il seed legge il parent diretto, non fonde la catena: un parent non conforme
   resta un errore da segnalare.
 
-## 12. Scanner (E)
+## 12. Cascade dashboard (B)
 
-- In 1.0.0 lo scanner non è esposto: nessun ribbon e nessuna sezione nelle impostazioni. I moduli restano in `src/scanner/` e non entrano nel bundle finché `main.ts` non li importa.
-- Una sola Modal (`TemplateScannerModal`) con due scanner: note vs template e template vs parent.
-- Solo `metadataCache`: nessun `vault.read` per file.
-- Scope dalle settings: `scannerExcludeFolders` (match per prefisso, case-insensitive) e `scannerTargets` (note / template).
-- Template vs parent segnala solo le proprietà mancanti; le proprietà extra sono attese (un template annidato specializza il parent).
-- Lo scanner legge e apre file, non modifica nulla. Autofix non ancora disponibile.
+- La dashboard è l'unica superficie che agisce sull'intero vault. Si apre dal
+  ribbon (`git-fork`), dal comando `Open cascade dashboard` e dal pulsante
+  `Cascade` del pannello; dal pannello è già scoped alla cascata della nota.
+- `Cascade` è una mappa **sola lettura** derivata dalle cartelle: per ogni local
+  root mostra le sottocartelle, il template locale e le note raggruppate
+  (`N notes`), con badge aggregato e conteggi `T` / `Nm` / `Ne` dello scope
+  d'azione. Un template annidato vive dentro la cascata del suo antenato; solo
+  un template senza template antenati è una local root. Le note fuori da ogni
+  cascata sono contate a parte, quelle senza frontmatter restano righe attenuate
+  senza badge.
+- **Regola `ok`**: `ok` significa *stesso insieme di chiavi*, non stessi valori
+  (`computeMapConformance`). Un template è `missing` solo se gli mancano chiavi
+  del parent; le sue chiavi extra sono specializzazione attesa.
+- **Setting opt-in sperimentale** `Enable Issues and History tabs
+  (experimental)` (`dashboardTabs`, default `false`):
+  - spenta (default): niente tab e niente azioni di scrittura, solo la mappa;
+  - accesa: mostra `Cascade | Issues (N) | History (M)`, i verbi e `Fix all`.
+  La descrizione avvisa che la History è un journal **in memoria di sessione**,
+  non un backup: va tenuta una copia del vault altrove.
+- `Issues (N)` elenca solo i rami con un problema, raggruppati per tipo
+  (`Templates needing update`, `Notes missing properties`, `Notes with extra
+  properties`). Gli antenati restano righe di contesto senza azioni e non
+  contano nei counter. `N` è lo stesso numero di `Fix all (N)`.
+- Verbi: `Update template(s)` e `Update note(s)` sempre disponibili; `Align
+  note(s)` è distruttivo e sbloccato solo se l'intera catena fino alla local
+  root è sound. `Align` non tocca mai i valori esistenti, rimuove solo le chiavi.
+- `Fix all` è una macro confermata una volta: `Update templates` → `Update
+  notes` → `Align notes`. Non è atomica: si ferma al primo errore e lascia una
+  entry di journal per ogni fase che ha scritto.
+- **Journal** (`History`): vive nel plugin, non nel modal, quindi chiudere e
+  riaprire la dashboard conserva la history. Scope = sessione, muore con
+  `onunload`. Modello a target state: per file conserva il frontmatter completo
+  (`before`) e le chiavi toccate (`changes`, con `REMOVED` esplicito). Undo
+  ripristina solo quelle chiavi, dal valore che avevano all'inizio del range.
+- Eviction FIFO dalla testa, budget 8 MB su mobile e 32 MB su desktop, unità di
+  budget = operazione (`Fix all` è una sola unità). Una troncatura è visibile in
+  cima alla History; un'operazione oltre il budget parte solo su conferma e non
+  viene registrata.
+- Le scritture della dashboard sono scritture esterne per il pannello: chiudono
+  la sessione Back della nota, che resta invece locale alla nota e indipendente
+  dal journal. Nessuna pressione del pannello compare nella History.
+- Mobilità e tastiera: le azioni delle righe hanno il menu `⋯` come fallback,
+  l'albero usa il pattern ARIA con roving tabindex, `Enter` apre il menu e
+  `Esc` chiude il modal (bloccato durante batch e rewind). L'indicizzazione
+  mostra `Waiting for indexing…` solo quando serve, con timeout di sicurezza.
+
 
 ## 13. Vincoli di design
 
 - Toolbar **per-view**, non legata alla nota attiva globale.
-- Command palette: solo le due azioni esplicite di C (creazione del template
-  nella cartella corrente, navigazione al parent template); nessun comando che
-  modifichi la nota attiva.
-- Scanner come **Modal**, mai View persistente.
+- Command palette: le due azioni esplicite di C (creazione del template nella
+  cartella corrente, navigazione al parent template) e l'apertura della
+  dashboard; nessun comando che modifichi la nota attiva.
+- Dashboard come **Modal**, mai View persistente; il journal vive nel plugin,
+  non nel modal.
 - UI e stringhe sorgente in inglese; i documenti interni in italiano.
 - Nessun reconform automatico a cascata.
 - Template e note condividono il motore ma mantengono regole e icone distinte.
 
 ## 14. Stato e aperti
 
-- Stato funzionale: cascata, pannello, auto-apply, settings dichiarative (Obsidian 1.13+), bridge Templater opt-in per dispositivo e creazione del template di cartella da menu/palette (C); scanner implementato ma non esposto. Ultima release: **1.0.2**.
+- Stato funzionale: cascata, pannello, auto-apply, settings dichiarative (Obsidian 1.13+), bridge Templater opt-in per dispositivo, creazione del template di cartella da menu/palette (C) e cascade dashboard (B) con mappa, Issues e History dietro setting sperimentale. Ultima release: **1.1.0**.
 - Aperti:
-  - **E2** autofix dello scanner e "fix all" riusando `reconformFile`, spingendo in history come la UI.
-  - Riattivazione dello scanner: reimportare `TemplateScannerModal` in `main.ts` e ripristinare i settings.
+  - Nome definitivo del modal, del comando e dell'icona ribbon (oggi `Cascade dashboard`, `Open cascade dashboard`, `git-fork`).
+  - Persistenza del journal tra reload: sarebbe una feature separata, perché ogni entry andrebbe riverificata chiave per chiave.
+  - Cancel di un batch lungo (`Stop after current file`): oggi `Esc` e la chiusura sono bloccati durante l'operazione.
+  - Taratura del budget reale su vault grandi; oggi 8 MB mobile / 32 MB desktop.
   - **F3** release e versioning (`npm version`, tag senza prefisso `v`).
   - C (polish): `Open template` nel menu della cartella e, da palette, apertura del template esistente al posto della sola Notice.
   - Verifica live del pannello su casi limite (focus su search/explorer, split multipli): check tracciato in `YOUDO.md`.
-- Test: core puro coperto da `npm test` (`setOperations`, `mapOperations`, `conformance`, 15 test); history coperta dallo smoke test, non è pura (WeakMap su `MarkdownView` + I/O).
+- Test: core puro coperto da `npm test` (`setOperations`, `mapOperations`, `conformance`, `frontmatterChanges`, `forest`, `journal`, `reconformSession`, 38 test); history del pannello e adapter I/O restano fuori dalla suite pura.
 
 ## 15. Riferimenti al codice
 
@@ -190,11 +235,15 @@ Dettagli:
 - `src/core/templateAPI.ts` — risoluzione del template (file e cartella), lettura/scrittura frontmatter, `reconformFile`, `computeReconformProps`, `computeTemplateConformance`, auto-apply. Contesto del plugin a livello di modulo: `init(this)` in `onload`, poi `getCtx().app` dentro queste funzioni, mai `this.app`.
 - `src/core/mapOperations.ts` — merge, conformità, `areMapsEqual`.
 - `src/core/setOperations.ts` — helper Set puri (sostituzione mobile-safe dei metodi TC39).
-- `src/core/reconformHistory.ts` — stack Back per `MarkdownView` (snapshot prima di ogni azione).
+- `src/core/frontmatterChanges.ts` — `REMOVED`, diff autorevole delle chiavi toccate e applicazione di un patch.
+- `src/core/forest.ts` — derivazione pura della foresta (local root, sotto-cascate, stati, badge, conteggi, catena sound) con `referenceFor(node)` iniettabile per D.
+- `src/core/journal.ts` — journal puro: entry a target state, budget/interning/eviction, preflight del rewind, conflitti e file spariti.
+- `src/core/reconformSession.ts` — modello puro della sessione per path (stack + cursore condivisi dalle tab della stessa nota).
+- `src/core/reconformHistory.ts` — adapter I/O della sessione: stack per nota, sweep delle note visibili, scritture via templateAPI.
 - `src/core/templaterBridge.ts` — ponte Templater (props e body); disponibilità e versione per lo stato nelle impostazioni; `hasScriptSyntax` per l'avviso sui blocchi `<%* %>`; `holdTemplaterPendingTemplate` per la guardia sul `vault.create` dei template.
 - `src/features/TemplaterConsentModal.ts` — modal di consenso nativo (`ConfirmationModal`) con checkbox bloccante e `Enable` disabilitato.
-- `src/features/metadataPanel.ts` — UI, stati del cursore, sessione, visibilità.
+- `src/features/metadataPanel.ts` — UI, stati del cursore, sessione per nota, visibilità e pulsante di apertura dashboard.
 - `src/features/folderTemplateMenu.ts` — voce del menu cartella e runner condiviso di creazione: placeholder `edit:` per i root, seed `add-missing`, guardia Templater.
 - `src/features/templateCommands.ts` — i due comandi palette (`create-folder-template`, `navigate-to-current-template`) con `checkCallback`.
-- `src/scanner/` — `TemplateScannerModal`, `ScannerABC`, `CoherenceScanner`, `TemplateCoherenceScanner`; cache-only, non importato in 1.0.0.
+- `src/features/dashboard/` — `CascadeDashboardModal` (mappa, Issues, History, tastiera, progress), `actions` (batch sequenziale), `vaultForest` (adapter cache → foresta), `journalStore`, `confirm`.
 - `src/conts.ts` — soli default statici (`DEFAULT_TEMPLATE_BASENAME = "!Template"`).

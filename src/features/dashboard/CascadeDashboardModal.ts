@@ -1,0 +1,1693 @@
+import { App, Menu, Modal, Notice, TFile, type EventRef } from "obsidian";
+import {
+	areMapsEqual,
+} from "../../core/mapOperations";
+import { computeReconformProps, type ReconformMode } from "../../core/conformance";
+import { diffProps, REMOVED } from "../../core/frontmatterChanges";
+import {
+	baseName,
+	countIssues,
+	collectIssueGroups,
+	folderTrail,
+	parentFolderPath,
+	type Forest,
+	type ForestFileNode,
+	type ForestFolderNode,
+	type IssueGroups,
+	type ScopeCounts,
+} from "../../core/forest";
+import {
+	appendEntryToOperation,
+	appendOperation,
+	distinctFolders,
+	enforceBudget,
+	entryCount,
+	estimateOperationBytes,
+	listEntries,
+	planRewind,
+	removeEntries,
+	type JournalEntry,
+	type JournalFileChange,
+	type JournalOperation,
+	type RewindPlan,
+} from "../../core/journal";
+import { applyFrontmatterPatch, getFileProps } from "../../core/templateAPI";
+import { areDashboardTabsEnabled, getTemplateFilename } from "../../settings";
+import { setIconSafe } from "../../utils/icons";
+import { runBatch, type BatchOutcome, type BatchTarget } from "./actions";
+import { confirmAction, confirmList, confirmMuted, confirmParagraph } from "./confirm";
+import { getJournal } from "./journalStore";
+import { buildVaultForest, type VaultForestSnapshot } from "./vaultForest";
+
+/**
+ * AI: Cascade dashboard modal (feature B).
+ *
+ * Role in the architecture:
+ * Replaces the flat scanner with a structural dashboard:
+ * - `Cascade`: read-only map of local roots, folders, templates and notes;
+ * - `Issues`: the actionable list with the typed verbs and the sound-chain gate;
+ * - `History`: the in-session journal of dashboard operations.
+ *
+ * `Issues` and `History` are experimental and live behind the `dashboardTabs`
+ * setting. When it is off the modal shows the `Cascade` map directly, with no
+ * tab strip and no global actions: the default surface can never write by
+ * accident.
+ *
+ * The modal owns presentation and orchestration only. Pure rules live in
+ * `core/forest.ts` and `core/journal.ts`; writes live in `core/templateAPI.ts`
+ * and `./actions.ts`.
+ */
+
+type TabId = "cascade" | "issues" | "history";
+
+interface RowModel {
+	id: string;
+	kind: "folder" | "notes" | "note" | "template";
+	level: number;
+	parentId: string | null;
+	hasChildren: boolean;
+	expanded: boolean;
+	label: string;
+	folder?: ForestFolderNode;
+	node?: ForestFileNode;
+	noteCount?: number;
+	context: boolean;
+}
+
+interface DashboardError {
+	tab: "issues" | "history";
+	title: string;
+	lines: string[];
+	/** AI: a rewind failed: the card can retry the same entry. */
+	retryEntryId?: string;
+	retryLatest?: boolean;
+}
+
+interface VerbConfig {
+	mode: ReconformMode;
+	label: string;
+	fullLabel: string;
+	icon: string;
+}
+
+interface DashboardOptions {
+	focusPath?: string;
+}
+
+const TAB_LABELS: Record<TabId, string> = {
+	cascade: "Cascade",
+	issues: "Issues",
+	history: "History",
+};
+
+const SNIPPET = `projects/
+├── !Template.md
+│   ---
+│   status:
+│   owner:
+│   ---
+└── alpha/
+    └── note.md`;
+
+/** AI: Icon of the status badge; `none` stays absent (attenuated row). */
+function stateIcon(node: ForestFileNode | ForestFolderNode): string {
+	if (node.kind === "folder" || node.kind === "template") {
+		if (node.state === "ok") return "file-check";
+		if (node.state === "missing") return "file-x";
+		return "circle-dashed";
+	}
+
+	if (node.state === "ok") return "circle-check-big";
+	if (node.state === "extra") return "circle-alert";
+	if (node.state === "missing") return "circle-x";
+	return "circle-dashed";
+}
+
+function stateLabel(state: string): string {
+	switch (state) {
+		case "ok":
+			return "In sync";
+		case "missing":
+			return "Missing properties";
+		case "extra":
+			return "Extra properties";
+		default:
+			return "No frontmatter";
+	}
+}
+
+function isTemplatePath(path: string): boolean {
+	const name = getTemplateFilename();
+	return path === name || path.endsWith(`/${name}`);
+}
+
+function formatTime(at: number): string {
+	return new Intl.DateTimeFormat(undefined, {
+		hour: "2-digit",
+		minute: "2-digit",
+	}).format(new Date(at));
+}
+
+function formatValue(value: unknown): string {
+	if (value === REMOVED) return "(removed)";
+	if (typeof value === "string") return value;
+	try {
+		return JSON.stringify(value) ?? String(value);
+	} catch {
+		return String(value);
+	}
+}
+
+function truncate(text: string, max = 60): string {
+	return text.length > max ? `${text.slice(0, max - 1)}…` : text;
+}
+
+export class CascadeDashboardModal extends Modal {
+	private snapshot: VaultForestSnapshot | null = null;
+	private tab: TabId = "cascade";
+	private busy = false;
+	private busyLabel = "";
+	private loading = true;
+	private waitingCount = 0;
+	private error: DashboardError | null = null;
+	private expanded = new Set<string>();
+	private activeRowId: string | null = null;
+	private pendingFocusId: string | null = null;
+	private focusPath?: string;
+	private issuesExpanded = false;
+	private rootsInitialized = false;
+	private loadStarted = false;
+	private indexTimer: number | null = null;
+	private metadataRefs: EventRef[] = [];
+	private rowElements = new Map<string, HTMLElement>();
+	private progressTextEl: HTMLElement | null = null;
+	private closed = false;
+	private indexCheckTimer: number | null = null;
+
+	constructor(app: App, options: DashboardOptions = {}) {
+		super(app);
+		this.focusPath = options.focusPath;
+	}
+
+	onOpen(): void {
+		this.closed = false;
+		this.modalEl.addClass("CascadeDashboardModal");
+		this.setTitle("Cascade dashboard");
+		this.installGuards();
+		void this.load();
+	}
+
+	onClose(): void {
+		this.closed = true;
+		this.disposeIndexWait();
+		this.contentEl.empty();
+	}
+
+	// ---------------------------------------------------------------- loading
+
+	/**
+	 * AI: Waits for the metadata cache only when it is actually incomplete.
+	 * After the timeout a non-indexed file is treated as a note without
+	 * frontmatter, so the dashboard never gets stuck behind a slow index.
+	 */
+	private async load(): Promise<void> {
+		if (this.loadStarted) return;
+		this.loadStarted = true;
+
+		this.loading = true;
+		this.waitingCount = this.countPending();
+		if (this.waitingCount > 0) {
+			this.render();
+			this.metadataRefs.push(
+				this.app.metadataCache.on("resolve", () => this.scheduleIndexCheck()),
+				this.app.metadataCache.on("resolved", () => this.scheduleIndexCheck())
+			);
+			this.indexTimer = window.setTimeout(() => this.finishLoading(), 3000);
+			return;
+		}
+
+		this.finishLoading();
+	}
+
+	private countPending(): number {
+		let pending = 0;
+		for (const file of this.app.vault.getMarkdownFiles()) {
+			if (!this.app.metadataCache.getFileCache(file)) pending++;
+		}
+		return pending;
+	}
+
+	/**
+	 * AI: `resolve` fires once per file: coalescing the count avoids a full
+	 * vault walk for every indexed note on a large vault.
+	 */
+	private scheduleIndexCheck(): void {
+		if (this.indexCheckTimer !== null) return;
+		this.indexCheckTimer = window.setTimeout(() => {
+			this.indexCheckTimer = null;
+			this.checkIndexing();
+		}, 120);
+	}
+
+	private checkIndexing(): void {
+		const pending = this.countPending();
+		this.waitingCount = pending;
+		if (pending === 0) {
+			this.finishLoading();
+		} else {
+			this.waitingCount = pending;
+			if (this.loading) this.render();
+		}
+	}
+
+	private finishLoading(): void {
+		this.disposeIndexWait();
+		this.loading = false;
+		this.rebuildForest();
+		if (!this.rootsInitialized && this.snapshot) {
+			this.rootsInitialized = true;
+			for (const root of this.snapshot.forest.roots) this.expanded.add(`f:${root.path}`);
+		}
+		this.prepareFocus();
+		this.render();
+	}
+
+	private disposeIndexWait(): void {
+		if (this.indexTimer !== null) {
+			window.clearTimeout(this.indexTimer);
+			this.indexTimer = null;
+		}
+		if (this.indexCheckTimer !== null) {
+			window.clearTimeout(this.indexCheckTimer);
+			this.indexCheckTimer = null;
+		}
+		for (const ref of this.metadataRefs) this.app.metadataCache.offref(ref);
+		this.metadataRefs = [];
+	}
+
+	private rebuildForest(): void {
+		try {
+			this.snapshot = buildVaultForest(this.app);
+		} catch (error) {
+			console.error("[cascade-templates] Could not build the cascade forest", error);
+			this.snapshot = null;
+		}
+	}
+
+	/**
+	 * AI: Opens the map already expanded on the cascade of the current note
+	 * (the panel affordance), without changing the global scope.
+	 */
+	private prepareFocus(): void {
+		if (!this.focusPath || !this.snapshot) return;
+
+		const path = this.focusPath;
+		const node = this.snapshot.forest.nodes.get(path);
+		if (!node) {
+			this.focusPath = undefined;
+			return;
+		}
+
+		for (const folder of folderTrail(path)) this.expanded.add(`f:${folder}`);
+		this.expanded.add(`g:${parentFolderPath(path)}`);
+		this.expanded.add(`f:${parentFolderPath(path)}`);
+
+		this.activeRowId = `${node.kind === "template" ? "t" : "n"}:${path}`;
+		this.pendingFocusId = this.activeRowId;
+		this.focusPath = undefined;
+	}
+
+	// --------------------------------------------------------------- rendering
+
+	private render(): void {
+		if (this.closed) return;
+
+		const root = createDiv({ cls: "ct-dashboard" });
+		const tabsEnabled = areDashboardTabsEnabled();
+
+		if (tabsEnabled) {
+			this.renderHeader(root);
+			this.renderTabs(root);
+		} else {
+			this.tab = "cascade";
+		}
+
+		if (this.busy) this.renderProgress(root);
+
+		const body = createDiv({ cls: "ct-dashboard-body" });
+		root.append(body);
+
+		if (this.loading) {
+			this.renderWaiting(body);
+		} else if (!this.snapshot) {
+			body.createEl("p", { cls: "ct-empty-text", text: "The vault could not be read." });
+		} else if (this.tab === "issues" && tabsEnabled) {
+			this.renderIssues(body);
+		} else if (this.tab === "history" && tabsEnabled) {
+			this.renderHistory(body);
+		} else {
+			this.renderCascade(body);
+		}
+
+		this.contentEl.empty();
+		this.contentEl.append(root);
+		this.restoreFocus();
+	}
+
+	private renderHeader(parent: HTMLElement): void {
+		const header = createDiv({ cls: "ct-dashboard-header" });
+		const forest = this.snapshot?.forest;
+
+		const fixAll = createEl("button", { cls: "ct-fix-all mod-cta" });
+		const icon = createSpan({ cls: "ct-fix-all-icon" });
+		setIconSafe(icon, "sparkles");
+		fixAll.append(icon);
+		fixAll.createSpan({ text: `Fix all (${forest ? countIssues(forest) : 0})` });
+		const issues = forest ? countIssues(forest) : 0;
+		fixAll.disabled = this.busy || issues === 0;
+		fixAll.setAttribute("aria-label", issues === 0 ? "No issues to fix" : "Fix all issues");
+		fixAll.addEventListener("click", () => void this.runFixAll());
+		header.append(fixAll);
+
+		const undo = createEl("button", { cls: "ct-undo clickable-icon" });
+		setIconSafe(undo, "undo-2");
+		const canUndo = entryCount(getJournal()) > 0 && !this.busy;
+		undo.disabled = !canUndo;
+		undo.setAttribute("aria-label", "Undo the last dashboard operation");
+		undo.title = "Undo last batch";
+		undo.addEventListener("click", () => {
+			const entries = listEntries(getJournal());
+			const last = entries[entries.length - 1];
+			if (last) void this.undoFrom(last.id, true);
+		});
+		header.append(undo);
+
+		parent.append(header);
+	}
+
+	private renderProgress(parent: HTMLElement): void {
+		const progress = createDiv({ cls: "ct-progress" });
+		progress.createDiv({ cls: "ct-progress-line" });
+		this.progressTextEl = progress.createDiv({ cls: "ct-progress-text", text: this.busyLabel });
+		parent.append(progress);
+	}
+
+	private renderTabs(parent: HTMLElement): void {
+		const journal = getJournal();
+		const issues = this.snapshot ? countIssues(this.snapshot.forest) : 0;
+		const history = entryCount(journal);
+		const counts: Record<TabId, number | null> = {
+			cascade: null,
+			issues,
+			history,
+		};
+
+		const nav = createDiv({ cls: "ct-dashboard-tabs" });
+		nav.setAttribute("role", "tablist");
+
+		for (const id of ["cascade", "issues", "history"] as const) {
+			const count = counts[id];
+			const label = count === null ? TAB_LABELS[id] : `${TAB_LABELS[id]} (${count})`;
+			const tab = createEl("button", { cls: "ct-dashboard-tab", text: label });
+			tab.setAttribute("role", "tab");
+			tab.setAttribute("aria-selected", String(this.tab === id));
+			tab.classList.toggle("is-active", this.tab === id);
+			const disabled = this.busy || (count === 0 && this.tab !== id);
+			tab.disabled = disabled;
+			tab.setAttribute("aria-disabled", String(disabled));
+			tab.addEventListener("click", () => {
+				if (disabled) return;
+				this.tab = id;
+				this.render();
+			});
+			nav.append(tab);
+		}
+
+		parent.append(nav);
+	}
+
+	private renderWaiting(parent: HTMLElement): void {
+		const empty = createDiv({ cls: "ct-empty" });
+		empty.createEl("h4", { text: "Waiting for indexing…" });
+		empty.createEl("p", {
+			cls: "ct-empty-text",
+			text: `${this.waitingCount} markdown file${this.waitingCount === 1 ? "" : "s"} still to index.`,
+		});
+		parent.append(empty);
+	}
+
+	private restoreFocus(): void {
+		const id = this.pendingFocusId;
+		if (!id) return;
+		this.pendingFocusId = null;
+		const row = this.rowElements.get(id);
+		if (!row) return;
+		row.focus({ preventScroll: true });
+		row.scrollIntoView({ block: "nearest" });
+	}
+
+	// ------------------------------------------------------------------ cascade
+
+	private renderCascade(parent: HTMLElement): void {
+		if (!this.snapshot) return;
+		const forest = this.snapshot.forest;
+
+		if (forest.roots.length === 0) {
+			this.renderEmptyGuide(parent);
+			return;
+		}
+
+		const rows = this.buildCascadeRows(forest);
+		this.renderTree(parent, rows, false);
+
+		if (forest.outsideNotes.length > 0) {
+			parent.createEl("p", {
+				cls: "ct-outside",
+				text: `${forest.outsideNotes.length} note${forest.outsideNotes.length === 1 ? " is" : "s are"} outside any cascade`,
+			});
+		}
+	}
+
+	private renderEmptyGuide(parent: HTMLElement): void {
+		const empty = createDiv({ cls: "ct-empty" });
+		empty.createEl("h4", { text: "No cascade found" });
+		empty.createEl("p", {
+			cls: "ct-empty-text",
+			text: "A cascade starts from a folder that contains the template file. Nothing is created for you: the folder is the decision.",
+		});
+
+		const steps = empty.createEl("ol", { cls: "ct-guide-steps" });
+		steps.createEl("li", { text: "Choose the root folder of the cascade." });
+		steps.createEl("li", { text: `Create ${getTemplateFilename()} inside it with the properties to inherit.` });
+		steps.createEl("li", { text: "Notes in that folder and below inherit those properties." });
+
+		const pre = empty.createEl("pre", { cls: "ct-guide-snippet" });
+		const snippet = SNIPPET.replace("!Template.md", getTemplateFilename());
+		pre.createEl("code", { text: snippet });
+
+		const copy = createEl("button", { cls: "ct-guide-copy", text: "Copy example" });
+		copy.addEventListener("click", () => {
+			const clipboard = navigator.clipboard;
+			if (!clipboard) {
+				new Notice("Could not copy the example.");
+				return;
+			}
+			void clipboard.writeText(snippet).then(
+				() => new Notice("Example copied to the clipboard."),
+				() => new Notice("Could not copy the example.")
+			);
+		});
+		empty.append(copy);
+		parent.append(empty);
+	}
+
+	private buildCascadeRows(forest: Forest): RowModel[] {
+		const rows: RowModel[] = [];
+		const pushFolder = (folder: ForestFolderNode, level: number, parentId: string | null): void => {
+			const folderId = `f:${folder.path}`;
+			const hasChildren = folder.folders.length > 0 || folder.template !== null || folder.notes.length > 0;
+			const expanded = this.expanded.has(folderId);
+			rows.push({
+				id: folderId,
+				kind: "folder",
+				level,
+				parentId,
+				hasChildren,
+				expanded,
+				label: folder.localRoot ? folderLabel(folder) : folder.name,
+				folder,
+				context: false,
+			});
+
+			if (!expanded) return;
+
+			for (const child of folder.folders) pushFolder(child, level + 1, folderId);
+
+			if (folder.template) {
+				rows.push(this.fileRow(folder.template, level + 1, folderId, false));
+			}
+
+			if (folder.notes.length > 0) {
+				const groupId = `g:${folder.path}`;
+				const groupExpanded = this.expanded.has(groupId);
+				rows.push({
+					id: groupId,
+					kind: "notes",
+					level: level + 1,
+					parentId: folderId,
+					hasChildren: true,
+					expanded: groupExpanded,
+					label: `${folder.notes.length} note${folder.notes.length === 1 ? "" : "s"}`,
+					folder,
+					noteCount: folder.notes.length,
+					context: false,
+				});
+				if (groupExpanded) {
+					for (const note of folder.notes) {
+						rows.push(this.fileRow(note, level + 2, groupId, note.state === "none"));
+					}
+				}
+			}
+		};
+
+		for (const root of forest.roots) pushFolder(root, 0, null);
+		return rows;
+	}
+
+	private fileRow(node: ForestFileNode, level: number, parentId: string, context: boolean): RowModel {
+		return {
+			id: `${node.kind === "template" ? "t" : "n"}:${node.path}`,
+			kind: node.kind,
+			level,
+			parentId,
+			hasChildren: false,
+			expanded: false,
+			label: node.name,
+			node,
+			context,
+		};
+	}
+
+	// ------------------------------------------------------------------ issues
+
+	private renderIssues(parent: HTMLElement): void {
+		if (!this.snapshot) return;
+		const forest = this.snapshot.forest;
+		const groups = collectIssueGroups(forest);
+
+		if (this.error?.tab === "issues") this.renderErrorCard(parent, this.error);
+
+		if (countIssues(forest) === 0) {
+			this.renderEmptyState(parent, "No issues", "Every note under a cascade matches its reference.");
+			return;
+		}
+
+		this.ensureIssuesExpanded(groups);
+		const total = countIssues(forest);
+		if (total > 0) {
+			this.renderIssueGroup(parent, "Templates needing update", groups.templates, "templates");
+			this.renderIssueGroup(parent, "Notes missing properties", groups.notesMissing, "notesMissing");
+			this.renderIssueGroup(parent, "Notes with extra properties", groups.notesExtra, "notesExtra");
+		}
+	}
+
+	private ensureIssuesExpanded(groups: IssueGroups): void {
+		if (this.issuesExpanded) return;
+		this.issuesExpanded = true;
+
+		for (const node of [...groups.templates, ...groups.notesMissing, ...groups.notesExtra]) {
+			for (const folder of folderTrail(node.path)) this.expanded.add(`f:${folder}`);
+			this.expanded.add(`f:${parentFolderPath(node.path)}`);
+			this.expanded.add(`g:${parentFolderPath(node.path)}`);
+		}
+	}
+
+	private renderIssueGroup(
+		parent: HTMLElement,
+		title: string,
+		nodes: ForestFileNode[],
+		kind: "templates" | "notesMissing" | "notesExtra"
+	): void {
+		if (nodes.length === 0) return;
+
+		const section = createDiv({ cls: "ct-issue-group" });
+		const header = createDiv({ cls: "ct-issue-header" });
+		header.createSpan({ cls: "ct-issue-title", text: title });
+		header.createSpan({ cls: "ct-issue-count", text: String(nodes.length) });
+
+		const config = bulkVerb(kind);
+		const bulk = createEl("button", { cls: "ct-issue-bulk", text: config.label });
+		const gated = kind === "notesExtra" && !nodes.every(node => node.chainSound);
+		bulk.disabled = this.busy || gated;
+		bulk.title = gated ? "Align is locked: update the template chain first" : config.label;
+		bulk.addEventListener("click", () => {
+			if (bulk.disabled) return;
+			void this.runVerb(nodes, config.mode, config.label, true);
+		});
+		header.append(bulk);
+		section.append(header);
+
+		const rows = this.buildIssueRows(nodes);
+		this.renderTree(section, rows, true);
+		parent.append(section);
+	}
+
+	private buildIssueRows(nodes: ForestFileNode[]): RowModel[] {
+		if (!this.snapshot) return [];
+		const matching = new Set(nodes.map(node => node.path));
+		const rows: RowModel[] = [];
+
+		const relevantFolders = new Map<string, boolean>();
+		const folderRelevant = (folder: ForestFolderNode): boolean => {
+			const memo = relevantFolders.get(folder.path);
+			if (memo !== undefined) return memo;
+
+			let relevant = folder.template !== null && matching.has(folder.template.path);
+			if (!relevant) relevant = folder.notes.some(note => matching.has(note.path));
+			if (!relevant) relevant = folder.folders.some(child => folderRelevant(child));
+			if (!relevant) relevant = folder.localRoot && this.folderContainsMatch(folder, matching);
+			relevantFolders.set(folder.path, relevant);
+			return relevant;
+		};
+
+		const pushFolder = (folder: ForestFolderNode, level: number, parentId: string | null): void => {
+			if (!folderRelevant(folder)) return;
+
+			const folderId = `f:${folder.path}`;
+			const expanded = this.expanded.has(folderId);
+			rows.push({
+				id: folderId,
+				kind: "folder",
+				level,
+				parentId,
+				hasChildren: true,
+				expanded,
+				label: folder.localRoot ? folderLabel(folder) : folder.name,
+				folder,
+				context: true,
+			});
+
+			if (!expanded) return;
+
+			for (const child of folder.folders) pushFolder(child, level + 1, folderId);
+
+			if (folder.template && matching.has(folder.template.path)) {
+				rows.push(this.fileRow(folder.template, level + 1, folderId, false));
+			}
+
+			const notes = folder.notes.filter(note => matching.has(note.path));
+			if (notes.length > 0) {
+				const groupId = `g:${folder.path}`;
+				const groupExpanded = this.expanded.has(groupId);
+				rows.push({
+					id: groupId,
+					kind: "notes",
+					level: level + 1,
+					parentId: folderId,
+					hasChildren: true,
+					expanded: groupExpanded,
+					label: `${notes.length} note${notes.length === 1 ? "" : "s"}`,
+					folder,
+					noteCount: notes.length,
+					context: true,
+				});
+				if (groupExpanded) {
+					for (const note of notes) {
+						rows.push(this.fileRow(note, level + 2, groupId, false));
+					}
+				}
+			}
+		};
+
+		for (const root of this.snapshot.forest.roots) pushFolder(root, 0, null);
+		return rows;
+	}
+
+	private folderContainsMatch(folder: ForestFolderNode, matching: ReadonlySet<string>): boolean {
+		if (folder.template && matching.has(folder.template.path)) return true;
+		if (folder.notes.some(note => matching.has(note.path))) return true;
+		return folder.folders.some(child => this.folderContainsMatch(child, matching));
+	}
+
+	// ------------------------------------------------------------------- tree
+
+	private renderTree(parent: HTMLElement, rows: RowModel[], interactive: boolean): void {
+		this.rowElements.clear();
+		const tree = createDiv({ cls: "ct-tree" });
+		tree.setAttribute("role", "tree");
+
+		const active = rows.some(row => row.id === this.activeRowId) ? this.activeRowId : rows[0]?.id ?? null;
+		this.activeRowId = active;
+
+		for (const row of rows) {
+			const el = this.createRow(row, interactive);
+			this.rowElements.set(row.id, el);
+			tree.append(el);
+		}
+
+		this.wireTree(tree, rows);
+		parent.append(tree);
+	}
+
+	private createRow(row: RowModel, interactive: boolean): HTMLElement {
+		const el = createDiv({ cls: "ct-tree-row" });
+		el.dataset.rowId = row.id;
+		el.dataset.parentId = row.parentId ?? "";
+		el.dataset.level = String(row.level);
+		el.dataset.hasChildren = String(row.hasChildren);
+		el.style.setProperty("--ct-depth", String(row.level));
+		el.setAttribute("role", "treeitem");
+		el.setAttribute("aria-level", String(row.level + 1));
+		el.setAttribute("tabindex", row.id === this.activeRowId ? "0" : "-1");
+		if (row.hasChildren) el.setAttribute("aria-expanded", String(row.expanded));
+		el.classList.toggle("is-context", row.context);
+		el.classList.toggle("is-busy", this.busy);
+
+		const toggle = createDiv({ cls: "ct-tree-toggle" });
+		if (row.hasChildren) {
+			setIconSafe(toggle, row.expanded ? "chevron-down" : "chevron-right");
+			toggle.setAttribute("role", "button");
+			toggle.setAttribute("aria-label", row.expanded ? "Collapse" : "Expand");
+			toggle.addEventListener("click", event => {
+				event.stopPropagation();
+				this.toggleRow(row);
+			});
+		} else {
+			toggle.classList.add("is-empty");
+		}
+		el.append(toggle);
+
+		const icon = createSpan({ cls: "ct-tree-icon" });
+		setIconSafe(icon, this.rowIcon(row));
+		el.append(icon);
+
+		const name = createSpan({ cls: "ct-row-name", text: row.label });
+		if (row.node) {
+			name.addClass("is-link");
+			name.addEventListener("click", event => {
+				event.stopPropagation();
+				void this.openPath(row.node?.path);
+			});
+		}
+		el.append(name);
+
+		if (row.kind === "folder" && row.folder?.localRoot && row.folder.referencePath) {
+			el.createSpan({ cls: "ct-row-ref", text: `→ ${row.folder.referencePath}` });
+		}
+
+		if (row.node) {
+			const reference = referenceLabel(row.node);
+			if (reference) {
+				el.createSpan({ cls: "ct-row-ref", text: reference });
+				el.title = reference;
+			}
+		}
+
+		if (row.folder && row.kind !== "notes" && !row.context) {
+			el.append(this.createCounts(row.folder.counts, row.folder.state));
+		}
+
+		if (row.kind === "folder" && row.folder && row.folder.state !== "none") {
+			const badge = createSpan({ cls: `ct-badge is-${row.folder.state}` });
+			setIconSafe(badge, stateIcon(row.folder));
+			badge.setAttribute("aria-label", stateLabel(row.folder.state));
+			badge.title = stateLabel(row.folder.state);
+			el.append(badge);
+		}
+
+		if (row.node && row.node.state !== "none") {
+			el.append(this.createBadge(row.node));
+		}
+
+		if (interactive && row.node) {
+			el.append(this.createRowActions(row.node));
+		}
+
+		el.addEventListener("click", () => {
+			this.activeRowId = row.id;
+			for (const [id, element] of this.rowElements) {
+				element.setAttribute("tabindex", id === row.id ? "0" : "-1");
+			}
+			el.focus({ preventScroll: true });
+		});
+
+		return el;
+	}
+
+	private rowIcon(row: RowModel): string {
+		if (row.kind === "folder") return row.expanded ? "folder-open" : "folder";
+		if (row.kind === "notes") return "files";
+		if (row.kind === "template") return "file";
+		return "file-text";
+	}
+
+	private createCounts(counts: ScopeCounts, state: string): HTMLElement {
+		const el = createSpan({ cls: "ct-row-counts" });
+		for (const [label, value, kind] of [
+			["T", counts.templates, "templates"],
+			["Nm", counts.notesMissing, "missing"],
+			["Ne", counts.notesExtra, "extra"],
+		] as const) {
+			const part = el.createSpan({ cls: `ct-count is-${kind}`, text: `${label} ${value}` });
+			part.title = label === "T"
+				? "Templates to update in this scope"
+				: label === "Nm"
+					? "Notes missing properties in this scope"
+					: "Notes with extra properties in this scope";
+		}
+		el.setAttribute("aria-label", `Scope state: ${stateLabel(state)}`);
+		return el;
+	}
+
+	private createBadge(node: ForestFileNode): HTMLElement {
+		const badge = createSpan({ cls: `ct-badge is-${node.state}` });
+		setIconSafe(badge, stateIcon(node));
+		badge.setAttribute("aria-label", stateLabel(node.state));
+		badge.title = stateLabel(node.state);
+		return badge;
+	}
+
+	private createRowActions(node: ForestFileNode): HTMLElement {
+		const container = createDiv({ cls: "ct-row-actions" });
+		const verb = primaryVerb(node);
+
+		if (verb) {
+			const blocked = !node.chainSound && verb.mode === "remove-extra";
+			const action = createDiv({ cls: "ct-row-action text-icon-button" });
+			action.setAttribute("role", "button");
+			action.setAttribute("tabindex", "-1");
+			action.setAttribute("aria-disabled", String(blocked || this.busy));
+			action.classList.toggle("is-blocked", blocked);
+			const icon = createSpan({ cls: "text-button-icon" });
+			setIconSafe(icon, verb.icon);
+			const label = createSpan({ cls: "text-button-label", text: verb.label });
+			action.append(icon, label);
+			action.title = blocked ? "Align is locked: update the template chain first" : verb.fullLabel;
+			action.addEventListener("click", event => {
+				event.stopPropagation();
+				if (blocked || this.busy) return;
+				void this.runVerb([node], verb.mode, verb.fullLabel, false);
+			});
+			container.append(action);
+		}
+
+		const more = createDiv({ cls: "ct-row-more clickable-icon" });
+		setIconSafe(more, "more-horizontal");
+		more.setAttribute("role", "button");
+		more.setAttribute("tabindex", "-1");
+		more.setAttribute("aria-label", "More actions");
+		more.addEventListener("click", event => {
+			event.stopPropagation();
+			this.openRowMenu(node, event);
+		});
+		container.append(more);
+		return container;
+	}
+
+	private toggleRow(row: RowModel): void {
+		if (!row.hasChildren) return;
+		if (this.expanded.has(row.id)) {
+			this.expanded.delete(row.id);
+		} else {
+			this.expanded.add(row.id);
+		}
+		this.activeRowId = row.id;
+		this.pendingFocusId = row.id;
+		this.render();
+	}
+
+	private wireTree(tree: HTMLElement, rows: RowModel[]): void {
+		const visible = (): HTMLElement[] => rows
+			.map(row => this.rowElements.get(row.id))
+			.filter((element): element is HTMLElement => element !== undefined);
+
+		tree.addEventListener("focusin", event => {
+			const target = event.target;
+			if (!(target instanceof HTMLElement)) return;
+			const row = target.closest<HTMLElement>(".ct-tree-row");
+			if (!row?.dataset.rowId) return;
+			this.activeRowId = row.dataset.rowId;
+			for (const element of visible()) {
+				element.setAttribute("tabindex", element === row ? "0" : "-1");
+			}
+		});
+
+		tree.addEventListener("keydown", event => {
+			const target = event.target;
+			if (!(target instanceof HTMLElement)) return;
+			const current = target.closest<HTMLElement>(".ct-tree-row");
+			if (!current) return;
+			const currentRow = rows.find(row => row.id === current.dataset.rowId);
+			if (!currentRow) return;
+
+			const elements = visible();
+			const index = elements.indexOf(current);
+			const moveTo = (next: HTMLElement | undefined): void => {
+				if (!next?.dataset.rowId) return;
+				this.activeRowId = next.dataset.rowId;
+				next.focus();
+			};
+
+			switch (event.key) {
+				case "ArrowDown":
+					event.preventDefault();
+					moveTo(elements[index + 1]);
+					break;
+				case "ArrowUp":
+					event.preventDefault();
+					moveTo(elements[index - 1]);
+					break;
+				case "ArrowRight": {
+					event.preventDefault();
+					if (currentRow.hasChildren && !currentRow.expanded) {
+						this.toggleRow(currentRow);
+					} else if (currentRow.hasChildren) {
+						moveTo(elements[index + 1]);
+					}
+					break;
+				}
+				case "ArrowLeft": {
+					event.preventDefault();
+					if (currentRow.hasChildren && currentRow.expanded) {
+						this.toggleRow(currentRow);
+					} else {
+						const parent = currentRow.parentId
+							? this.rowElements.get(currentRow.parentId)
+							: undefined;
+						moveTo(parent);
+					}
+					break;
+				}
+				case "Enter":
+					event.preventDefault();
+					if (currentRow.node) this.openRowMenu(currentRow.node, event, current);
+					break;
+				case " ":
+					event.preventDefault();
+					if (currentRow.hasChildren) this.toggleRow(currentRow);
+					break;
+				default:
+					break;
+			}
+		});
+	}
+
+	private openRowMenu(node: ForestFileNode, event: Event, anchor?: HTMLElement): void {
+		const menu = new Menu();
+		menu.addItem(item => item
+			.setTitle("Open file")
+			.setIcon("external-link")
+			.setDisabled(this.busy)
+			.onClick(() => void this.openPath(node.path)));
+
+		const verb = primaryVerb(node);
+		if (verb) {
+			const blocked = !node.chainSound && verb.mode === "remove-extra";
+			menu.addItem(item => item
+				.setTitle(blocked ? `${verb.fullLabel} (chain not sound)` : verb.fullLabel)
+				.setIcon(verb.icon)
+				.setDisabled(blocked || this.busy)
+				.onClick(() => {
+					if (!blocked && !this.busy) void this.runVerb([node], verb.mode, verb.fullLabel, false);
+				}));
+		}
+
+		const target = anchor ?? event.currentTarget;
+		if (target instanceof HTMLElement) {
+			const rect = target.getBoundingClientRect();
+			menu.showAtPosition({ x: rect.left, y: rect.bottom });
+		} else {
+			menu.showAtMouseEvent(event as MouseEvent);
+		}
+	}
+
+	private async openPath(path: string | undefined): Promise<void> {
+		if (this.busy || !path) return;
+		const file = this.app.vault.getAbstractFileByPath(path);
+		if (!(file instanceof TFile)) return;
+		this.close();
+		await this.app.workspace.getLeaf("tab").openFile(file);
+	}
+
+	// ---------------------------------------------------------------- history
+
+	private renderHistory(parent: HTMLElement): void {
+		const journal = getJournal();
+		const entries = listEntries(journal);
+
+		if (this.error?.tab === "history") this.renderErrorCard(parent, this.error);
+
+		parent.createEl("p", {
+			cls: "ct-history-warning",
+			text: "Session-only journal — not a backup. Keep a copy of your vault elsewhere.",
+		});
+
+		if (entries.length === 0) {
+			this.renderEmptyState(
+				parent,
+				"Nothing to restore",
+				"History lists dashboard operations only. The Back button of a note keeps its own local session and never appears here."
+			);
+			return;
+		}
+
+		const truncated = journal.truncatedOperations;
+		if (truncated > 0) {
+			parent.createEl("p", {
+				cls: "ct-history-truncated",
+				text: `${truncated} older operation${truncated === 1 ? " is" : "s are"} no longer restorable`,
+			});
+		}
+
+		const operations = [...journal.operations].reverse();
+		for (const operation of operations) {
+			const operationEntries = [...operation.entries].reverse();
+			if (operationEntries.length > 1) {
+				parent.append(this.renderFixAllHeader(operation));
+			}
+			for (const entry of operationEntries) {
+				parent.append(this.renderHistoryCard(entry, entries));
+			}
+		}
+	}
+
+	private renderFixAllHeader(operation: JournalOperation): HTMLElement {
+		const header = createDiv({ cls: "ct-history-group" });
+		const total = operation.routine?.total ?? operation.entries.length;
+		const count = operation.entries.length;
+		const label = count < total
+			? `Fix all · ${count} of ${total} operations`
+			: `Fix all · ${count} operations`;
+		header.createSpan({ cls: "ct-history-group-label", text: label });
+		return header;
+	}
+
+	private renderHistoryCard(entry: JournalEntry, allEntries: readonly JournalEntry[]): HTMLElement {
+		const card = createDiv({ cls: "ct-history-card" });
+		const top = createDiv({ cls: "ct-history-top" });
+		top.createSpan({ cls: "ct-history-verb", text: entryLabel(entry) });
+		top.createSpan({ cls: "ct-history-time", text: formatTime(entry.at) });
+		card.append(top);
+
+		const written = entry.files.filter(file => !file.skipped);
+		const templates = written.filter(file => isTemplatePath(file.path)).length;
+		const notes = written.length - templates;
+		const folders = distinctFolders(written.map(file => file.path));
+
+		card.createDiv({
+			cls: "ct-history-stats",
+			text: `Templates modified: ${templates} · Notes modified: ${notes} · Folders involved: ${folders}`,
+		});
+
+		const newer = Math.max(0, allEntries.length - 1 - allEntries.indexOf(entry));
+		const undo = createEl("button", {
+			cls: "ct-history-undo",
+			text: newer === 0 ? "Undo" : `Undo this and ${newer} newer operation${newer === 1 ? "" : "s"}`,
+		});
+		undo.disabled = this.busy;
+		undo.addEventListener("click", () => void this.undoFrom(entry.id, newer === 0));
+		card.append(undo);
+
+		return card;
+	}
+
+	// ----------------------------------------------------------------- errors
+
+	private renderErrorCard(parent: HTMLElement, error: DashboardError): void {
+		const card = createDiv({ cls: "ct-error-card" });
+		const top = createDiv({ cls: "ct-error-top" });
+		top.createSpan({ cls: "ct-error-title", text: error.title });
+		const dismiss = createDiv({ cls: "ct-error-dismiss clickable-icon" });
+		setIconSafe(dismiss, "x");
+		dismiss.setAttribute("role", "button");
+		dismiss.setAttribute("tabindex", "0");
+		dismiss.setAttribute("aria-label", "Dismiss error");
+		dismiss.addEventListener("click", () => {
+			this.error = null;
+			this.render();
+		});
+		dismiss.addEventListener("keydown", event => {
+			if (event.key !== "Enter" && event.key !== " ") return;
+			event.preventDefault();
+			this.error = null;
+			this.render();
+		});
+		top.append(dismiss);
+		card.append(top);
+		for (const line of error.lines) card.createEl("p", { cls: "ct-error-line", text: line });
+		if (error.retryEntryId) {
+			const retry = createEl("button", { cls: "ct-error-retry", text: "Retry undo" });
+			retry.disabled = this.busy;
+			retry.addEventListener("click", () => {
+				if (error.retryEntryId) void this.undoFrom(error.retryEntryId, error.retryLatest === true);
+			});
+			card.append(retry);
+		}
+		parent.append(card);
+	}
+
+	private renderEmptyState(parent: HTMLElement, title: string, text: string): void {
+		const empty = createDiv({ cls: "ct-empty" });
+		empty.createEl("h4", { text: title });
+		empty.createEl("p", { cls: "ct-empty-text", text });
+		parent.append(empty);
+	}
+
+	// ---------------------------------------------------------------- actions
+
+	private async runVerb(
+		nodes: readonly ForestFileNode[],
+		mode: ReconformMode,
+		label: string,
+		bulk: boolean
+	): Promise<void> {
+		if (this.busy || !this.snapshot) return;
+
+		const estimate = this.estimateFiles(nodes, mode);
+		if (estimate.files.length === 0) {
+			new Notice("Nothing to do.");
+			return;
+		}
+
+		if (bulk) {
+			const content = createFragment(fragment => {
+				fragment.append(confirmParagraph(`${label} on ${estimate.files.length} file${estimate.files.length === 1 ? "" : "s"}.`));
+				fragment.append(confirmMuted("Only the keys of this operation are touched; existing values are kept. Undo is available in History."));
+			});
+			const confirmed = await confirmAction(this.app, {
+				title: label,
+				content,
+				cta: "Run",
+			});
+			if (!confirmed) return;
+		}
+
+		const budget = await this.checkBudget(estimate.files, label);
+		if (!budget.proceed) return;
+
+		this.setBusy(true, label);
+		const outcome = await runBatch(
+			estimate.targets,
+			(done, total, path) => this.updateProgress(`${label} · ${done}/${total} · ${baseName(path)}`)
+		);
+		this.finishBatch(outcome, label, budget.recordable, "batch");
+	}
+
+	/**
+	 * AI: Dry run shared by every verb: computes the real target of each node
+	 * from the current forest, drops the files that would not change, and
+	 * returns the batch targets. No disk access.
+	 */
+	private estimateFiles(nodes: readonly ForestFileNode[], mode: ReconformMode): {
+		targets: BatchTarget[];
+		files: JournalFileChange[];
+	} {
+		const targets: BatchTarget[] = [];
+		const files: JournalFileChange[] = [];
+		if (!this.snapshot) return { targets, files };
+
+		for (const node of nodes) {
+			const file = this.snapshot.files.get(node.path);
+			if (!file || node.props === null) continue;
+			const reference = this.referenceProps(node);
+			if (!reference) continue;
+
+			const next = computeReconformProps(reference, node.props, mode);
+			if (areMapsEqual(node.props, next)) continue;
+
+			files.push({
+				path: node.path,
+				before: new Map(node.props),
+				changes: diffProps(node.props, next),
+			});
+			targets.push({
+				file,
+				mode,
+				kind: node.kind === "template" ? "template" : "note",
+			});
+		}
+
+		return { targets, files };
+	}
+
+	private referenceProps(node: ForestFileNode): Map<string, unknown> | null {
+		if (!node.referencePath || !this.snapshot) return null;
+		const reference = this.snapshot.forest.nodes.get(node.referencePath);
+		if (!reference) return null;
+		return reference.props ?? new Map<string, unknown>();
+	}
+
+	/**
+	 * AI: Budget preflight. The estimate decides the veto; the real size is
+	 * checked again after the operation (`finishBatch`).
+	 */
+	private async checkBudget(
+		files: readonly JournalFileChange[],
+		label: string
+	): Promise<{ proceed: boolean; recordable: boolean }> {
+		const journal = getJournal();
+		const estimate = estimateOperationBytes(files);
+
+		if (estimate > journal.budgetBytes) {
+			const content = createFragment(fragment => {
+				fragment.append(confirmParagraph(`${label} is larger than the History budget.`));
+				fragment.append(confirmMuted("The operation will run, but it cannot be recorded: it will NOT be undoable. Keep a copy of your vault elsewhere."));
+			});
+			const proceed = await confirmAction(this.app, {
+				title: "Operation cannot be undone",
+				content,
+				cta: "Run without undo",
+			});
+			return { proceed, recordable: false };
+		}
+
+		if (estimate > journal.budgetBytes / 2) {
+			const content = createFragment(fragment => {
+				fragment.append(confirmParagraph(`${label} needs a large part of the History budget.`));
+				fragment.append(confirmMuted("Older operations will be removed to make room. Proceed to truncate the History and record this operation."));
+			});
+			const proceed = await confirmAction(this.app, {
+				title: "Truncate History?",
+				content,
+				cta: "Proceed",
+			});
+			return { proceed, recordable: true };
+		}
+
+		return { proceed: true, recordable: true };
+	}
+
+	/** AI: Stores the outcome in the journal and refreshes the modal. */
+	private finishBatch(
+		outcome: BatchOutcome,
+		label: string,
+		recordable: boolean,
+		origin: "batch" | "fix-all"
+	): void {
+		const written = outcome.files.filter(file => !file.skipped && file.changes.length > 0);
+
+		if (written.length > 0 && recordable) {
+			const result = appendOperation(getJournal(), {
+				origin,
+				files: outcome.files,
+				verb: label,
+			});
+			if (result.oversized) {
+				new Notice("The operation completed but is too large to be recorded: it is not undoable.");
+			} else if (result.evictedOperations > 0) {
+				new Notice(`${result.evictedOperations} older operation${result.evictedOperations === 1 ? " is" : "s are"} no longer restorable.`);
+			}
+		} else if (written.length > 0 && !recordable) {
+			new Notice("The operation completed. It was not recorded and cannot be undone.");
+		}
+
+		this.reportOutcome(outcome, written.length, label);
+	}
+
+	private reportOutcome(outcome: BatchOutcome, changed: number, label: string): void {
+		this.setBusy(false);
+
+		if (outcome.errors.length > 0) {
+			this.error = {
+				tab: "issues",
+				title: `${label}: ${outcome.errors.length} file${outcome.errors.length === 1 ? "" : "s"} failed`,
+				lines: outcome.errors.map(error => `${error.path} — ${error.message}`),
+			};
+			new Notice(`Cascade Templates: ${outcome.errors.length} file(s) failed.`);
+		} else if (changed === 0) {
+			if (this.error?.tab === "issues") this.error = null;
+			new Notice("Nothing to do.");
+		} else {
+			if (this.error?.tab === "issues") this.error = null;
+			new Notice(`${label}: ${changed} file${changed === 1 ? "" : "s"} updated.`);
+		}
+
+		void this.refreshAfterWrite();
+	}
+
+	private async refreshAfterWrite(): Promise<void> {
+		// The metadata cache updates asynchronously after a write; one short
+		// settle keeps the map from flashing the pre-write state.
+		await new Promise<void>(resolve => window.setTimeout(resolve, 80));
+		this.rebuildForest();
+		this.render();
+	}
+
+	// ---------------------------------------------------------------- fix all
+
+	private async runFixAll(): Promise<void> {
+		if (this.busy || !this.snapshot) return;
+		const groups = collectIssueGroups(this.snapshot.forest);
+		const total = groups.templates.length + groups.notesMissing.length + groups.notesExtra.length;
+		if (total === 0) {
+			new Notice("No issues to fix.");
+			return;
+		}
+
+		const content = createFragment(fragment => {
+			fragment.append(confirmParagraph("Fix all runs three phases in order:"));
+			fragment.append(confirmList([
+				`Update templates — ${groups.templates.length} estimated`,
+				`Update notes — ${groups.notesMissing.length} estimated`,
+				`Align notes — ${groups.notesExtra.length} estimated`,
+			]));
+			fragment.append(confirmMuted("The last two counts are estimates: they depend on the first phase. The macro is not atomic; each phase that writes is a separate History entry. Keep a copy of your vault elsewhere."));
+		});
+		const confirmed = await confirmAction(this.app, {
+			title: "Fix all",
+			content,
+			cta: "Fix all",
+		});
+		if (!confirmed) return;
+
+		const estimate = this.estimateFixAll();
+		const budget = await this.checkBudget(estimate.files, "Fix all");
+		if (!budget.proceed) return;
+
+		this.setBusy(true, "Fix all · updating templates");
+		let operationId: string | null = null;
+		let stopped = false;
+
+		// Phase 1: templates, top-down. A failed template skips its subtree.
+		const templateTargets = this.estimateFiles(groups.templates, "add-missing").targets;
+		if (templateTargets.length > 0) {
+			const outcome = await runBatch(
+				templateTargets,
+				(done, count, path) => this.updateProgress(`Fixing ${done}/${count} · Updating templates · ${baseName(path)}`)
+			);
+			operationId = this.storeFixAllPhase(operationId, outcome, 1, 3, "Update templates", budget.recordable);
+			if (outcome.errors.length > 0) {
+				stopped = true;
+				this.setErrorForFixAll(outcome);
+			}
+		}
+
+		if (!stopped) {
+			const noteTargets = this.allNotesTargets("add-missing");
+			this.setBusy(true, "Fix all · updating notes");
+			const outcome = await runBatch(
+				noteTargets,
+				(done, count, path) => this.updateProgress(`Fixing ${done}/${count} · Updating notes · ${baseName(path)}`)
+			);
+			operationId = this.storeFixAllPhase(operationId, outcome, 2, 3, "Update notes", budget.recordable);
+			if (outcome.errors.length > 0) {
+				stopped = true;
+				this.setErrorForFixAll(outcome);
+			}
+		}
+
+		if (!stopped) {
+			const noteTargets = this.allNotesTargets("remove-extra");
+			this.setBusy(true, "Fix all · aligning notes");
+			const outcome = await runBatch(
+				noteTargets,
+				(done, count, path) => this.updateProgress(`Fixing ${done}/${count} · Aligning notes · ${baseName(path)}`)
+			);
+			operationId = this.storeFixAllPhase(operationId, outcome, 3, 3, "Align notes", budget.recordable);
+			if (outcome.errors.length > 0) {
+				stopped = true;
+				this.setErrorForFixAll(outcome);
+			}
+		}
+
+		if (stopped) {
+			new Notice("Fix all stopped after an error. You can run it again: every phase is idempotent.");
+		} else {
+			if (this.error?.tab === "issues") this.error = null;
+			if (!budget.recordable && operationId === null) {
+				new Notice("Fix all completed. It was not recorded and cannot be undone.");
+			} else if (operationId) {
+				new Notice("Fix all completed.");
+			} else {
+				new Notice("Nothing to do.");
+			}
+		}
+
+		this.setBusy(false);
+		await this.refreshAfterWrite();
+	}
+
+	private storeFixAllPhase(
+		operationId: string | null,
+		outcome: BatchOutcome,
+		step: number,
+		total: number,
+		verb: string,
+		recordable: boolean
+	): string | null {
+		const written = outcome.files.filter(file => !file.skipped && file.changes.length > 0);
+		if (written.length === 0 || !recordable) return operationId;
+
+		const routine = { id: operationId ?? `fix-all-${Date.now()}`, step, total };
+		if (!operationId) {
+			const result = appendOperation(getJournal(), {
+				origin: "fix-all",
+				files: outcome.files,
+				routine,
+				verb,
+			});
+			if (result.oversized) {
+				new Notice("Fix all is too large to be recorded: the operation is not undoable.");
+				return null;
+			}
+			if (result.evictedOperations > 0) {
+				new Notice(`${result.evictedOperations} older operation${result.evictedOperations === 1 ? " is" : "s are"} no longer restorable.`);
+			}
+			return result.entry?.operationId ?? null;
+		}
+
+		const entry = appendEntryToOperation(getJournal(), operationId, outcome.files, routine, verb);
+		const budget = enforceBudget(getJournal());
+		if (budget.droppedOperations > 0) {
+			new Notice("Fix all is too large to keep in history: the operation is not undoable.");
+			return null;
+		}
+		if (budget.evictedOperations > 0) {
+			new Notice(`${budget.evictedOperations} older operation${budget.evictedOperations === 1 ? " is" : "s are"} no longer restorable.`);
+		}
+		return entry ? operationId : null;
+	}
+
+	private estimateFixAll(): { files: JournalFileChange[] } {
+		if (!this.snapshot) return { files: [] };
+		const groups = collectIssueGroups(this.snapshot.forest);
+		const files = [
+			...this.estimateFiles(groups.templates, "add-missing").files,
+			...this.estimateFiles([...this.allNotesNodes()], "add-missing").files,
+			...this.estimateFiles([...this.allNotesNodes()], "remove-extra").files,
+		];
+		return { files };
+	}
+
+	private allNotesNodes(): ForestFileNode[] {
+		if (!this.snapshot) return [];
+		const notes: ForestFileNode[] = [];
+		for (const node of this.snapshot.forest.nodes.values()) {
+			if (node.kind === "note" && node.referencePath && node.props !== null) notes.push(node);
+		}
+		return notes;
+	}
+
+	private allNotesTargets(mode: ReconformMode): BatchTarget[] {
+		return this.estimateFiles(this.allNotesNodes(), mode).targets;
+	}
+
+	private setErrorForFixAll(outcome: BatchOutcome): void {
+		this.error = {
+			tab: "issues",
+			title: `Fix all stopped: ${outcome.errors.length} file${outcome.errors.length === 1 ? "" : "s"} failed`,
+			lines: outcome.errors.map(error => `${error.path} — ${error.message}`),
+		};
+	}
+
+	// ------------------------------------------------------------------ undo
+
+	private async undoFrom(entryId: string, latest: boolean): Promise<void> {
+		if (this.busy) return;
+		this.error = null;
+
+		const journal = getJournal();
+		const entries = listEntries(journal);
+		const index = entries.findIndex(entry => entry.id === entryId);
+		if (index < 0) return;
+
+		const range = entries.slice(index);
+		const paths = new Set<string>();
+		for (const entry of range) {
+			for (const file of entry.files) {
+				if (!file.skipped && file.changes.length > 0) paths.add(file.path);
+			}
+		}
+
+		const current = new Map<string, Map<string, unknown>>();
+		const existing = new Set<string>();
+		let readFailed = false;
+		for (const path of paths) {
+			const file = this.app.vault.getAbstractFileByPath(path);
+			if (!(file instanceof TFile)) continue;
+			existing.add(path);
+			try {
+				current.set(path, await getFileProps(file));
+			} catch {
+				// Do not treat a transient read failure as a deleted file: abort
+				// the preflight and keep the entries untouched.
+				readFailed = true;
+				break;
+			}
+		}
+
+		if (readFailed) {
+			this.error = {
+				tab: "history",
+				title: "Rewind not started",
+				lines: ["A file could not be read. No operation was consumed; retry in a moment."],
+				retryEntryId: entryId,
+				retryLatest: latest,
+			};
+			this.render();
+			return;
+		}
+
+		const plan = planRewind(journal, entryId, current, existing);
+		if (plan.entryIds.length === 0) return;
+
+		if (!latest || plan.conflictCount > 0 || plan.missingPaths.length > 0) {
+			const confirmed = await this.confirmRewind(plan);
+			if (!confirmed) return;
+		}
+
+		this.setBusy(true, "Restoring…");
+		let restored = 0;
+		try {
+			for (let i = 0; i < plan.writes.length; i++) {
+				const write = plan.writes[i];
+				if (!write) continue;
+				const file = this.app.vault.getAbstractFileByPath(write.path);
+				if (!(file instanceof TFile)) continue;
+				this.updateProgress(`Restoring ${i + 1}/${plan.writes.length} · ${baseName(write.path)}`);
+				await applyFrontmatterPatch(file, write.patch);
+				restored++;
+			}
+
+			removeEntries(journal, plan.entryIds);
+			this.error = null;
+			new Notice(`Restored ${restored} file${restored === 1 ? "" : "s"}.`);
+			this.setBusy(false);
+			await this.refreshAfterWrite();
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error);
+			this.error = {
+				tab: "history",
+				title: "Rewind failed",
+				lines: [
+					`Restored ${restored} of ${plan.writes.length} files.`,
+					`The operation was not consumed and can be retried: ${message}`,
+				],
+				retryEntryId: entryId,
+				retryLatest: latest,
+			};
+			this.setBusy(false);
+			this.render();
+		}
+	}
+
+	private async confirmRewind(plan: RewindPlan): Promise<boolean> {
+		const content = createFragment(fragment => {
+			fragment.append(confirmParagraph(
+				`Undo ${plan.entryIds.length} operation${plan.entryIds.length === 1 ? "" : "s"} · ` +
+				`${plan.writes.length} file${plan.writes.length === 1 ? "" : "s"} · ` +
+				`${distinctFolders(plan.writes.map(write => write.path))} folder${distinctFolders(plan.writes.map(write => write.path)) === 1 ? "" : "s"}.`
+			));
+
+			if (plan.conflictCount > 0) {
+				fragment.append(confirmMuted(`${plan.conflictCount} key${plan.conflictCount === 1 ? " was" : "s were"} changed outside the dashboard and will be restored:`));
+				const lines: string[] = [];
+				let shown = 0;
+				for (const write of plan.writes) {
+					for (const conflict of write.conflicts) {
+						if (shown >= 10) break;
+						lines.push(`${write.path} → ${conflict.key}: ${truncate(formatValue(conflict.current))} → ${truncate(formatValue(conflict.restored))}`);
+						shown++;
+					}
+				}
+				fragment.append(confirmList(lines));
+				if (plan.conflictCount > shown) {
+					fragment.append(confirmMuted(`… and ${plan.conflictCount - shown} more.`));
+				}
+			}
+
+			if (plan.missingPaths.length > 0) {
+				fragment.append(confirmMuted(`${plan.missingPaths.length} file${plan.missingPaths.length === 1 ? "" : "s"} no longer exist and will be skipped:`));
+				fragment.append(confirmList(plan.missingPaths.slice(0, 10)));
+			}
+
+			fragment.append(confirmMuted("Only the keys touched by these operations are restored; every other property is kept."));
+		});
+
+		return confirmAction(this.app, {
+			title: plan.conflictCount > 0 ? "Restore over your changes?" : "Undo operations",
+			content,
+			cta: "Undo",
+		});
+	}
+
+	// ------------------------------------------------------------------ busy
+
+	private setBusy(busy: boolean, label?: string): void {
+		this.busy = busy;
+		if (label !== undefined) this.busyLabel = label;
+		this.modalEl.classList.toggle("is-busy", busy);
+		this.render();
+	}
+
+	private updateProgress(text: string): void {
+		this.busyLabel = text;
+		this.progressTextEl?.setText(text);
+	}
+
+	private installGuards(): void {
+		this.modalEl.addEventListener("keydown", event => {
+			if (!this.busy || event.key !== "Escape") return;
+			event.preventDefault();
+			event.stopPropagation();
+		}, true);
+
+		this.containerEl.addEventListener("click", event => {
+			if (!this.busy) return;
+			if (event.target !== this.containerEl) return;
+			event.preventDefault();
+			event.stopPropagation();
+		}, true);
+	}
+}
+
+// ---------------------------------------------------------------- helpers
+
+function folderLabel(folder: ForestFolderNode): string {
+	return folder.path === "" ? "Vault root" : folder.path;
+}
+
+function referenceLabel(node: ForestFileNode): string | null {
+	if (!node.referencePath) return null;
+	return node.kind === "template"
+		? `parent: ${node.referencePath}`
+		: `template: ${node.referencePath}`;
+}
+
+function primaryVerb(node: ForestFileNode): VerbConfig | null {
+	if (node.kind === "template" && node.state === "missing") {
+		return { mode: "add-missing", label: "Update", fullLabel: "Update template", icon: "wrench" };
+	}
+	if (node.kind === "note" && node.state === "missing") {
+		return { mode: "add-missing", label: "Update", fullLabel: "Update note", icon: "wrench" };
+	}
+	if (node.kind === "note" && node.state === "extra") {
+		return { mode: "remove-extra", label: "Align", fullLabel: "Align note", icon: "anvil" };
+	}
+	return null;
+}
+
+function bulkVerb(kind: "templates" | "notesMissing" | "notesExtra"): VerbConfig {
+	if (kind === "templates") {
+		return { mode: "add-missing", label: "Update templates", fullLabel: "Update templates", icon: "wrench" };
+	}
+	if (kind === "notesMissing") {
+		return { mode: "add-missing", label: "Update notes", fullLabel: "Update notes", icon: "wrench" };
+	}
+	return { mode: "remove-extra", label: "Align notes", fullLabel: "Align notes", icon: "anvil" };
+}
+
+function entryLabel(entry: JournalEntry): string {
+	if (entry.verb) return entry.verb;
+	if (entry.routine) {
+		switch (entry.routine.step) {
+			case 1:
+				return "Update templates";
+			case 2:
+				return "Update notes";
+			default:
+				return "Align notes";
+		}
+	}
+	return "Dashboard update";
+}

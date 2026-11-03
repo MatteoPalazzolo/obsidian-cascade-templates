@@ -1,78 +1,492 @@
-.ScannerModal {
+/* AI: cascade dashboard (feature B).
+   The root class lives on `.modalEl`, so the whole modal can be themed from one
+   place. Every color/size comes from an Obsidian variable so light, dark and
+   custom themes keep working. */
+.CascadeDashboardModal {
 
-    /* AI: E4 — minimal scanner summary / empty state, native typography. */
-    & > p.scanner-summary {
+    /* AI: tabs and undo stay blocked while a batch or a rewind is running. */
+    &.is-busy .modal-close-button {
+        pointer-events: none;
+        opacity: 0.4;
+    }
+
+    & .ct-dashboard {
+        display: flex;
+        flex-direction: column;
+        gap: var(--size-4-2);
+    }
+
+    & .ct-dashboard-header {
+        position: relative;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-height: var(--size-4-8);
+    }
+
+    & .ct-fix-all {
+        display: inline-flex;
+        align-items: center;
+        gap: var(--size-2-2);
+        padding-inline: var(--size-4-3);
+        border-radius: var(--button-radius);
+        font-weight: var(--font-medium);
+    }
+
+    & .ct-fix-all-icon {
+        display: inline-flex;
+    }
+
+    & .ct-undo {
+        position: absolute;
+        inset-inline-end: 0;
+    }
+
+    & .ct-dashboard-tabs {
+        display: flex;
+        align-items: stretch;
+        gap: var(--size-2-1);
+        border-bottom: 1px solid var(--background-modifier-border);
+    }
+
+    & .ct-dashboard-tab {
+        flex: 1;
+        padding: var(--size-2-2) var(--size-2-3);
+        border: none;
+        border-bottom: 2px solid transparent;
+        border-radius: 0;
+        background: transparent;
         color: var(--text-muted);
         font-size: var(--font-ui-small);
-        margin: var(--size-4-1) 0 var(--size-4-3);
+        cursor: var(--cursor);
     }
 
-    & > p.scanner-empty {
+    & .ct-dashboard-tab:hover:not(:disabled) {
+        color: var(--text-normal);
+        background: var(--background-modifier-hover);
+    }
+
+    & .ct-dashboard-tab.is-active {
+        color: var(--text-normal);
+        border-bottom-color: var(--interactive-accent);
+        font-weight: var(--font-medium);
+    }
+
+    & .ct-dashboard-tab:disabled {
+        color: var(--text-faint);
+        cursor: default;
+    }
+
+    & .ct-progress {
+        display: flex;
+        flex-direction: column;
+        gap: var(--size-2-1);
+    }
+
+    & .ct-progress-line {
+        height: 2px;
+        overflow: hidden;
+        background: var(--background-modifier-border);
+        border-radius: var(--radius-s);
+        position: relative;
+    }
+
+    & .ct-progress-line::after {
+        content: "";
+        position: absolute;
+        inset-block: 0;
+        width: 35%;
+        background: var(--interactive-accent);
+        animation: ct-progress 1.2s ease-in-out infinite;
+    }
+
+    & .ct-progress-text {
         color: var(--text-muted);
-        margin: var(--size-4-4) 0;
+        font-size: var(--font-ui-smaller);
     }
 
-    & details {
-        background-color: var(--main-color);
-        margin-bottom: 2px;
-        
-        &>summary {
-            width: 100%;
+    & .ct-dashboard-body {
+        min-height: 0;
+        max-height: 60vh;
+        overflow-y: auto;
+    }
 
-            background-color: var(--side-color);
+    & .ct-tree {
+        display: flex;
+        flex-direction: column;
+    }
 
-            display: flex;
-            align-items: center;
+    & .ct-tree-row {
+        display: flex;
+        align-items: center;
+        gap: var(--size-2-1);
+        min-height: var(--size-4-8);
+        padding-inline-start: min(calc(var(--size-4-2) + var(--ct-depth) * 16px), 40%);
+        padding-inline-end: var(--size-2-2);
+        border-radius: var(--radius-s);
+        cursor: default;
+    }
 
-            &>svg {
-                margin: 8px;
-            }
+    & .ct-tree-row:hover {
+        background: var(--background-modifier-hover);
+    }
 
-            &>span.title {
-                flex: 1;
-                font-size: 16px;
-                padding-left: 0px;
-            }
+    & .ct-tree-row:focus-visible {
+        box-shadow: 0 0 0 2px var(--background-modifier-border-focus);
+    }
 
+    & .ct-tree-row.is-context .ct-row-name,
+    & .ct-tree-row.is-context .ct-tree-icon {
+        color: var(--text-faint);
+    }
+
+    & .ct-tree-toggle {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: var(--size-4-4);
+        height: var(--size-4-4);
+        flex: none;
+        color: var(--text-faint);
+        border-radius: var(--radius-s);
+    }
+
+    & .ct-tree-toggle:not(.is-empty):hover {
+        color: var(--text-normal);
+        background: var(--background-modifier-hover);
+    }
+
+    & .ct-tree-toggle.is-empty {
+        visibility: hidden;
+    }
+
+    & .ct-tree-icon {
+        display: inline-flex;
+        flex: none;
+        color: var(--text-muted);
+    }
+
+    & .ct-row-name {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    & .ct-row-name.is-link {
+        cursor: pointer;
+    }
+
+    & .ct-row-name.is-link:hover {
+        text-decoration: underline;
+    }
+
+    & .ct-row-ref {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        color: var(--text-faint);
+        font-size: var(--font-ui-smaller);
+    }
+
+    & .ct-row-counts {
+        display: inline-flex;
+        gap: var(--size-2-2);
+        margin-inline-start: auto;
+        color: var(--text-muted);
+        font-size: var(--font-ui-smaller);
+        font-variant-numeric: tabular-nums;
+    }
+
+    & .ct-count.is-templates {
+        color: var(--text-error);
+    }
+
+    & .ct-count.is-missing {
+        color: var(--text-error);
+    }
+
+    & .ct-count.is-extra {
+        color: var(--text-warning);
+    }
+
+    & .ct-badge {
+        display: inline-flex;
+        flex: none;
+        margin-inline-start: var(--size-2-2);
+    }
+
+    & .ct-badge.is-ok {
+        color: var(--text-success);
+    }
+
+    & .ct-badge.is-extra {
+        color: var(--text-warning);
+    }
+
+    & .ct-badge.is-missing {
+        color: var(--text-error);
+    }
+
+    & .ct-badge.is-none {
+        color: var(--text-faint);
+    }
+
+    & .ct-row-actions {
+        display: inline-flex;
+        align-items: center;
+        gap: var(--size-2-1);
+        margin-inline-start: var(--size-2-2);
+    }
+
+    & .ct-row-action {
+        display: inline-flex;
+        align-items: center;
+        gap: var(--size-2-1);
+        padding: var(--size-2-1);
+        border-radius: var(--button-radius);
+        color: var(--text-muted);
+        cursor: var(--cursor);
+        font-size: var(--font-ui-smaller);
+    }
+
+    & .ct-row-action:hover {
+        color: var(--text-normal);
+        background: var(--background-modifier-hover);
+    }
+
+    & .ct-row-action.is-blocked {
+        color: var(--text-faint);
+        opacity: 0.6;
+        cursor: default;
+    }
+
+    & .ct-row-more {
+        display: inline-flex;
+        color: var(--text-faint);
+    }
+
+    & .ct-row-more:hover {
+        color: var(--text-normal);
+    }
+
+    /* AI: desktop keeps the row compact until the user points at it; touch
+       devices always show the action, because there is no hover. */
+    @media (hover: hover) {
+        & .ct-row-action {
+            opacity: 0;
+            transition: opacity 0.12s ease-in-out;
         }
 
-        &>.item-container {
-            display: flex;
-            justify-content: left;
-            align-items: center;
-            height: 34px;
-            padding-top: 3px;
-            padding-bottom: 3px;
-
-            margin-left: 16px;
-            border-left: solid #fff 1px;
-
-            &:nth-child(2) {
-                border-image: linear-gradient(to top, #fff 0%, #fff 80%, #00000000 95%) 1;
-            }
-
-            &:last-child {
-                border-image: linear-gradient(to bottom, #fff 0%, #fff 80%, #00000000 90%) 1;
-            }
-
-            &>.name {
-                flex: 1;
-                padding-left: 16px;
-                text-decoration: none;
-            }
-
+        & .ct-tree-row:hover .ct-row-action,
+        & .ct-tree-row:focus-within .ct-row-action {
+            opacity: 1;
         }
+    }
 
-        & span.clickable-icon {
-            margin-right: 4px;
-            font-family: monospace;
-            
-            &.btn-fix {
-                aspect-ratio: 1/1;
-                cursor: pointer;
-            }
-        }
+    & .ct-issue-group {
+        margin-bottom: var(--size-4-3);
+    }
 
+    & .ct-issue-header {
+        display: flex;
+        align-items: center;
+        gap: var(--size-2-2);
+        padding: var(--size-2-2) 0;
+        border-bottom: 1px solid var(--background-modifier-border);
+    }
+
+    & .ct-issue-title {
+        font-weight: var(--font-medium);
+    }
+
+    & .ct-issue-count {
+        color: var(--text-muted);
+        font-size: var(--font-ui-small);
+        margin-inline-end: auto;
+    }
+
+    & .ct-issue-bulk {
+        border-radius: var(--button-radius);
+        font-size: var(--font-ui-small);
+    }
+
+    & .ct-history-warning {
+        margin: 0 0 var(--size-4-2);
+        color: var(--text-warning);
+        font-size: var(--font-ui-smaller);
+    }
+
+    & .ct-history-truncated {
+        color: var(--text-warning);
+        font-size: var(--font-ui-small);
+        margin: 0 0 var(--size-4-2);
+    }
+
+    & .ct-history-group {
+        margin-top: var(--size-4-2);
+        color: var(--text-muted);
+        font-size: var(--font-ui-small);
+        font-weight: var(--font-medium);
+    }
+
+    & .ct-history-card {
+        display: flex;
+        flex-direction: column;
+        gap: var(--size-2-1);
+        padding: var(--size-4-2);
+        margin-bottom: var(--size-2-2);
+        border: 1px solid var(--background-modifier-border);
+        border-radius: var(--radius-m);
+        background: var(--background-secondary);
+    }
+
+    & .ct-history-top {
+        display: flex;
+        align-items: baseline;
+        gap: var(--size-2-2);
+    }
+
+    & .ct-history-verb {
+        font-weight: var(--font-medium);
+    }
+
+    & .ct-history-time {
+        margin-inline-start: auto;
+        color: var(--text-muted);
+        font-size: var(--font-ui-smaller);
+        font-variant-numeric: tabular-nums;
+    }
+
+    & .ct-history-stats {
+        color: var(--text-muted);
+        font-size: var(--font-ui-small);
+    }
+
+    & .ct-history-undo {
+        width: 100%;
+        margin-top: var(--size-2-1);
+    }
+
+    & .ct-error-card {
+        padding: var(--size-4-2);
+        margin-bottom: var(--size-4-2);
+        border: 1px solid var(--text-error);
+        border-radius: var(--radius-m);
+        background: var(--background-secondary);
+    }
+
+    & .ct-error-top {
+        display: flex;
+        align-items: center;
+        gap: var(--size-2-2);
+    }
+
+    & .ct-error-title {
+        color: var(--text-error);
+        font-weight: var(--font-medium);
+    }
+
+    & .ct-error-dismiss {
+        margin-inline-start: auto;
+    }
+
+    & .ct-error-line {
+        margin: var(--size-2-1) 0 0;
+        color: var(--text-muted);
+        font-size: var(--font-ui-small);
+    }
+
+    & .ct-error-retry {
+        margin-top: var(--size-2-2);
+        border-radius: var(--button-radius);
+    }
+
+    & .ct-empty {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: var(--size-2-2);
+        padding: var(--size-4-4) 0;
+    }
+
+    & .ct-empty h4 {
+        margin: 0;
+    }
+
+    & .ct-empty-text {
+        margin: 0;
+        color: var(--text-muted);
+    }
+
+    & .ct-guide-steps {
+        margin: 0;
+        padding-inline-start: var(--size-4-4);
+    }
+
+    & .ct-guide-snippet {
+        width: 100%;
+        padding: var(--size-4-2);
+        border-radius: var(--radius-m);
+        background: var(--background-primary-alt);
+        overflow-x: auto;
+        font-size: var(--font-ui-smaller);
+    }
+
+    & .ct-guide-copy {
+        border-radius: var(--button-radius);
+    }
+
+    & .ct-outside {
+        margin: var(--size-4-2) 0 0;
+        color: var(--text-muted);
+        font-size: var(--font-ui-small);
+    }
+
+    & .ct-confirm-muted {
+        color: var(--text-muted);
+        font-size: var(--font-ui-small);
+    }
+
+    & .ct-confirm-list {
+        margin: var(--size-2-2) 0;
+        padding-inline-start: var(--size-4-4);
+        font-size: var(--font-ui-small);
+    }
+
+    /* AI: mobile indentation is slightly tighter (12 px instead of 16 px). */
+    body.is-phone & .ct-tree-row {
+        padding-inline-start: min(calc(var(--size-4-2) + var(--ct-depth) * 12px), 40%);
+    }
+}
+
+/* AI: the confirmation body is rendered in its own native ConfirmationModal,
+   outside the dashboard root, so these two helpers are global. */
+.ct-confirm-muted {
+    color: var(--text-muted);
+    font-size: var(--font-ui-small);
+}
+
+.ct-confirm-list {
+    margin: var(--size-2-2) 0;
+    padding-inline-start: var(--size-4-4);
+    font-size: var(--font-ui-small);
+}
+
+@keyframes ct-progress {
+    0% {
+        inset-inline-start: -35%;
+    }
+    100% {
+        inset-inline-start: 100%;
+    }
+}
+
+/* AI: the animation is decorative: with reduced motion the bar stays static. */
+@media (prefers-reduced-motion: reduce) {
+    .CascadeDashboardModal .ct-progress-line::after {
+        animation: none;
+        inset-inline-start: 0;
+        opacity: 0.6;
     }
 }
 
@@ -211,6 +625,14 @@
         border-bottom-right-radius: 0;
     }
 
+    /* AI: B — the dashboard affordance is the third control of the row. */
+    &.cascade-templates-dashboard {
+        border-top-left-radius: 0;
+        border-bottom-left-radius: 0;
+        border-top-right-radius: var(--button-radius);
+        border-bottom-right-radius: var(--button-radius);
+    }
+
     /* ICON COLOR FIX */
     &.cascade-templates-reconform > .text-button-icon,
     &.cascade-templates-back > .text-button-icon {
@@ -262,6 +684,10 @@
    needed to keep the row together. The accessible name is preserved by the
    `aria-label` set in `createActionButton`. */
 body.is-phone .cascade-templates-back > .text-button-label {
+    display: none;
+}
+
+body.is-phone .cascade-templates-dashboard > .text-button-label {
     display: none;
 }
 

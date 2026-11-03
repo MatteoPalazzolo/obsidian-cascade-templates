@@ -13,7 +13,7 @@ import { confirmTemplaterConsent } from "./features/TemplaterConsentModal";
  *
  * Role in the architecture:
  * Single source of truth for everything the user can configure. The values are
- * needed **synchronously** all over the code base (template lookup, scanner,
+ * needed **synchronously** all over the code base (template lookup, dashboard,
  * metadata panel), so `initSettings(plugin)` loads them once in `onload` and
  * keeps a module-level copy. Every write goes through `updateSettings`, which
  * persists to `data.json` and notifies the subscribers (D3), so nothing has to
@@ -46,17 +46,8 @@ export type AutoApplyMode = "off" | "properties" | "full";
 export type PanelVisibility = "always" | "onlyWithTemplate";
 
 /**
- * AI: Which file kinds the vault scanner visits (Session E).
- *
- * - `notes`     → regular notes compared to their nearest template.
- * - `templates` → `!Template.md` files compared to their parent template.
+ * AI: User-configurable behaviour of the plugin.
  */
-export interface ScannerTargets {
-	notes: boolean;
-	templates: boolean;
-}
-
-/** AI: User-configurable behaviour of the plugin. */
 export interface CascadeTemplatesSettings {
 	/**
 	 * AI: Base name of the folder template file, WITHOUT extension
@@ -72,14 +63,10 @@ export interface CascadeTemplatesSettings {
 	panelVisibility: PanelVisibility;
 
 	/**
-	 * AI: Folders skipped by the vault scanner (E4). Stored as normalized vault
-	 * paths (no leading/trailing slash); a file is skipped when its path is the
-	 * folder itself or starts with `folder + "/"`.
+	 * AI: Opt-in for the experimental `Issues` and `History` tabs. Off by
+	 * default: the dashboard stays the read-only cascade map.
 	 */
-	scannerExcludeFolders: string[];
-
-	/** AI: File kinds visited by the vault scanner (E4). */
-	scannerTargets: ScannerTargets;
+	dashboardTabs: boolean;
 }
 
 /** AI: Fallbacks applied on top of whatever `data.json` contains. */
@@ -87,8 +74,7 @@ export const DEFAULT_SETTINGS: CascadeTemplatesSettings = {
 	templateBasename: DEFAULT_TEMPLATE_BASENAME,
 	autoApply: "full",
 	panelVisibility: "always",
-	scannerExcludeFolders: [],
-	scannerTargets: { notes: true, templates: true },
+	dashboardTabs: false,
 };
 
 /** AI: Plugin handle, needed to load/save `data.json`. */
@@ -116,7 +102,17 @@ export async function initSettings(host: Plugin): Promise<void> {
  * always switch on the unions above without extra guards.
  */
 function normalizeSettings(stored: Partial<CascadeTemplatesSettings> | null): CascadeTemplatesSettings {
-	const merged = { ...DEFAULT_SETTINGS, ...(stored ?? {}) };
+	// Build an explicit object (instead of spreading `stored`) so fields removed
+	// from the model, such as the old scanner settings, are dropped on the next
+	// save instead of being resurrected forever.
+	const merged: CascadeTemplatesSettings = {
+		templateBasename: typeof stored?.templateBasename === "string"
+			? stored.templateBasename
+			: DEFAULT_SETTINGS.templateBasename,
+		autoApply: stored?.autoApply ?? DEFAULT_SETTINGS.autoApply,
+		panelVisibility: stored?.panelVisibility ?? DEFAULT_SETTINGS.panelVisibility,
+		dashboardTabs: stored?.dashboardTabs === true,
+	};
 
 	if (merged.autoApply !== "off" && merged.autoApply !== "properties" && merged.autoApply !== "full") {
 		merged.autoApply = DEFAULT_SETTINGS.autoApply;
@@ -124,53 +120,14 @@ function normalizeSettings(stored: Partial<CascadeTemplatesSettings> | null): Ca
 	if (merged.panelVisibility !== "always" && merged.panelVisibility !== "onlyWithTemplate") {
 		merged.panelVisibility = DEFAULT_SETTINGS.panelVisibility;
 	}
-
-	merged.scannerExcludeFolders = normalizeFolders(merged.scannerExcludeFolders);
-
-	const targets = merged.scannerTargets;
-	merged.scannerTargets = {
-		notes: targets?.notes !== false,
-		templates: targets?.templates !== false,
-	};
+	merged.dashboardTabs = merged.dashboardTabs === true;
 
 	return merged;
 }
 
-/**
- * AI: Normalizes a folder list: trims entries, converts backslashes, strips
- * leading/trailing slashes and drops empty/duplicate values. Used both when
- * loading `data.json` and when reading the settings textarea (E4).
- */
-export function normalizeFolders(folders: unknown): string[] {
-	if (!Array.isArray(folders)) return [];
-
-	const normalized = new Set<string>();
-	for (const entry of folders) {
-		if (typeof entry !== "string") continue;
-		const path = entry.trim().replace(/\\/g, "/").replace(/^\/+|\/+$/g, "");
-		if (path) normalized.add(path);
-	}
-	return [...normalized];
-}
-
-/**
- * AI: Parses the scanner exclusion textarea (one folder per line).
- * Exposed so the settings tab and `normalizeFolders` share the same rules.
- */
-export function parseFolderList(value: string): string[] {
-	return normalizeFolders(value.split(/\r?\n/));
-}
-
-/**
- * AI: True when the scanner must skip `path` because it lives in one of the
- * excluded folders (E4). Case-insensitive so Windows/mobile behave the same.
- */
-export function isScannerExcluded(path: string): boolean {
-	const normalized = path.toLowerCase();
-	return settings.scannerExcludeFolders.some(folder => {
-		const prefix = folder.toLowerCase();
-		return normalized === prefix || normalized.startsWith(prefix + "/");
-	});
+/** AI: True when the experimental Issues/History tabs are enabled. */
+export function areDashboardTabsEnabled(): boolean {
+	return settings.dashboardTabs === true;
 }
 
 /** AI: Read-only view of the current settings. */
@@ -215,7 +172,7 @@ export function getTemplateFilename(): string {
 
 /**
  * AI: True when the given file is a template file.
- * Shared by the metadata panel, the scanner and the Templater bridge so the
+ * Shared by the metadata panel, the dashboard and the Templater bridge so the
  * "is this a template?" question has exactly one answer.
  */
 export function isTemplateFile(file: TAbstractFile | undefined | null): boolean {
@@ -269,6 +226,30 @@ function bridgeToggleDescription(enabled: boolean): DocumentFragment {
 				"on each device.",
 		});
 		if (enabled) note.addClass("mod-warning");
+	});
+}
+
+/**
+ * AI: Description of the experimental dashboard setting.
+ *
+ * The warning is part of the informed opt-in: `Issues` writes to the vault and
+ * `History` is an in-session journal, not a backup. The wording says both
+ * explicitly so a user cannot mistake the journal for a version history.
+ */
+function dashboardTabsDescription(enabled: boolean): DocumentFragment {
+	return createFragment(fragment => {
+		fragment.append(
+			"Experimental. Enables the \"Issues\" and \"History\" tabs in the cascade dashboard: " +
+			"Issues runs the fix actions on your files, History keeps an in-session undo journal. " +
+			"When off, the dashboard shows the cascade map only, with no tabs and no write actions."
+		);
+		fragment.createEl("br");
+		const warning = fragment.createSpan({
+			text:
+				"History is NOT a backup: it lives in memory for the current session and is lost when " +
+				"Obsidian closes. Keep a copy of your vault elsewhere before using these actions.",
+		});
+		if (enabled) warning.addClass("mod-warning");
 	});
 }
 
@@ -356,6 +337,14 @@ export class CascadeTemplatesSettingTab extends PluginSettingTab {
 						always: "Always",
 						onlyWithTemplate: "Only when a template applies",
 					},
+				},
+			},
+			{
+				name: "Enable Issues and History tabs (experimental)",
+				desc: dashboardTabsDescription(getSettings().dashboardTabs === true),
+				control: {
+					type: "toggle",
+					key: "dashboardTabs",
 				},
 			},
 		];
