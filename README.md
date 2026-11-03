@@ -143,7 +143,7 @@ A template is a Markdown note named `!Template.md` (the name is configurable in 
 
 ### Creating a template from a folder
 
-Right-click a folder in the file explorer (long-press it on mobile) and choose **New root template** or **New child template**. The entry shows the configured template file name and is disabled when the folder already has one. The new file opens in a new tab and immediately inherits the properties of the nearest parent template, even when auto-apply is disabled; its body follows the auto-apply mode.
+Right-click a folder in the file explorer (long-press it on mobile) and choose **New root cascade template** or **New child cascade template**. The entry is disabled as **Cascade template already in folder** when the folder already has one. The same action is available from the command palette as **Create cascade template in current folder**, which targets the folder of the active note. The new file opens in a new tab and immediately inherits the properties of the nearest parent template, even when auto-apply is disabled; its body follows the auto-apply mode.
 
 ### Cascading templates
 
@@ -151,7 +151,7 @@ A template applies to the folder that contains it and to all its descendants, un
 
 ### Auto-apply on new notes
 
-When a note is created with an empty body, including a new nested `!Template.md`, the properties of its reference template are applied automatically, so the note starts conformant. Files that already contain content, such as notes arriving from sync or import, are left untouched. The settings expose three modes: disabled, properties only, properties and body. Creating a template from the folder menu is explicit and always seeds its properties, regardless of the auto-apply mode.
+When a note is created with an empty body, including a new nested `!Template.md`, the properties of its reference template are applied automatically, so the note starts conformant. Files that already contain content, such as notes arriving from sync or import, are left untouched. The settings expose three modes: disabled, properties only, properties and body. Creating a template from the folder menu or the command palette is explicit and always seeds its properties, regardless of the auto-apply mode.
 
 ### Template status icon
 

@@ -10,7 +10,10 @@ import {
 } from 'src/core/reconformHistory';
 import { maybeShowTemplaterNotice } from 'src/core/templaterConsent';
 import * as MetadataPanel from 'src/features/metadataPanel';
-import { registerFolderTemplateMenu } from 'src/features/folderTemplateMenu';
+import {
+	registerFolderTemplateCommand,
+	registerFolderTemplateMenu,
+} from 'src/features/folderTemplateMenu';
 import {
 	CascadeTemplatesSettingTab,
 	initSettings,
@@ -38,6 +41,7 @@ export default class extends Plugin {
 		registerHistoryLifecycle(this);
 		MetadataPanel.init(this);
 		registerFolderTemplateMenu(this);
+		registerFolderTemplateCommand(this);
 
 		this.addSettingTab(new CascadeTemplatesSettingTab(this));
 

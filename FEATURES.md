@@ -668,24 +668,31 @@ check manuali in `YOUDO.md` e `npm run build` fuori sandbox.
 Perché: creare a mano un template richiede di ricordare il `templateBasename`
 configurato e di posizionare il file nella cartella giusta. Una voce nel menu
 contestuale della cartella rende l'azione scopribile, esplicita e disponibile
-anche su mobile (long-press), senza introdurre comandi in palette. La
-distinzione root/child rende inoltre visibile se l'azione inizierà una cascata
-o estenderà il template parent.
+anche su mobile (long-press); la stessa azione è esposta in command palette per
+la cartella della nota attiva, così chi lavora da tastiera non deve passare dal
+file explorer. La distinzione root/child rende inoltre visibile se l'azione
+inizierà una cascata o estenderà il template parent.
 
 Comportamento:
 - solo menu di una `TFolder` (in pratica il file explorer), non il menu di un
   file: il flusso è template prima, note dopo;
+- command palette: `Create cascade template in current folder` agisce sulla
+  cartella della nota attiva (non su una selezione del file explorer, che non
+  ha API pubblica); senza una nota attiva il comando è disabilitato via
+  `checkCallback` e non ripiega sulla root del vault;
 - template locale assente e nessun template antenato:
-  `New root template (<nome>.md)`, sezione `action`, icona `file-plus`;
+  `New root cascade template`, icona `file-plus`;
 - template locale assente ma template antenato presente:
-  `New child template (<nome>.md)`, stessa sezione e icona: erediterà le
+  `New child cascade template`, stessa icona: erediterà le
   proprietà dal parent. "Root" significa inizio della cascata, non root del
   vault;
 - template locale presente: voce disabled
-  `Template already exists (<nome>.md)`, icona neutra (`file`, non
+  `Cascade template already in folder`, icona neutra (`file`, non
   `file-check` per non sovrapporsi alla semantica di conformità), nessun click;
   serve solo a segnalare l'esistenza, anche se il file non è visibile. Il
-  titolo resta generico, senza distinzione root/child;
+  titolo resta generico, senza distinzione root/child; da palette il comando
+  resta eseguibile e mostra una Notice con il path esistente, perché un comando
+  disabilitato non spiegherebbe il motivo;
 - il file nasce vuoto e riceve subito le proprietà del template antenato più
   vicino, anche con auto-apply `off`: è un'azione esplicita, non una cascata
   automatica;
@@ -712,9 +719,9 @@ Note implementative:
   conforme resta un errore della dashboard;
 - la distinzione root/child usa lo stesso walk sincrono di `getTemplateOfFile`:
   nessun costo aggiuntivo;
-- registrarsi su `file-menu` con la sola guardia `TFolder`; la verifica dal vivo
-  (`source`, `setSection("action")`, long-press mobile) è tracciata in
-  `YOUDO.md`;
+- registrarsi su `file-menu` con la sola guardia `TFolder` e registrare il
+  comando con `checkCallback`; la verifica dal vivo (voce di menu,
+  raggruppamento, long-press mobile, palette) è tracciata in `YOUDO.md`;
 - aggiornare README e descrizione della setting auto-apply: l'azione esplicita
   eredita le proprietà anche con auto-apply disattivato.
 
@@ -724,6 +731,8 @@ Criteri di completamento:
 - root del vault, root di cascata e cartelle child;
 - cartella con template locale, con solo template antenato, senza nessuno dei
   due;
+- command palette su desktop e mobile: root, child, template già presente
+  (Notice con il path) e nessuna nota attiva (comando disabilitato);
 - `npm run build` e `npm test` verdi;
 - con Templater attivo, `trigger_on_file_creation` acceso e
   `files_with_pending_templates` presente, il template appena creato resta raw:
@@ -736,7 +745,9 @@ Aperti:
 - se il template esiste, valutare un `Open template` separato in una sezione
   `view` (non nello slot create);
 - se differenziare anche il disabled (`Root/Child template already exists`) o
-  lasciarlo generico come da design attuale.
+  lasciarlo generico come da design attuale;
+- se, da palette, un template già presente debba essere aperto invece di
+  limitarsi alla Notice.
 
 ## (D) Interfaces (ct-interfaces)
 

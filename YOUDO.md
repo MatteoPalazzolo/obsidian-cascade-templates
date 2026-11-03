@@ -8,7 +8,8 @@ Formato: `- [ ] <controllo> — <come/dove eseguirlo> (origine: <file:riga>)`.
 
 ---
 
-- [ ] Menu cartella su desktop (right-click) e mobile (long-press): `New root template (!Template.md)` senza template antenato, `New child template (!Template.md)` con parent, in sezione `action` con icona `file-plus`; con template locale presente voce disabilitata `Template already exists (!Template.md)` con icona `file` e nessun click (origine: src/features/folderTemplateMenu.ts:42)
+- [ ] Menu cartella su desktop (right-click) e mobile (long-press): `New root cascade template` senza template antenato, `New child cascade template` con parent, icona `file-plus`; con template locale presente voce disabilitata `Cascade template already in folder` con icona `file` e nessun click; verificare in devtools raggruppamento/sezione della voce (origine: src/features/folderTemplateMenu.ts:65)
+- [ ] Command palette `Create cascade template in current folder` su desktop e mobile: root del vault, root di cascata e cartella child; con template locale presente resta eseguibile e mostra la Notice con il path; senza nota attiva il comando è disabilitato (origine: src/features/folderTemplateMenu.ts:51)
 - [ ] Casi cartella: root del vault, root di cascata e cartella child; path normalizzato anche per la root del vault (origine: src/core/templateAPI.ts:127)
 - [ ] Creazione: il file nasce vuoto, si apre in una nuova tab e riceve subito le proprietà del parent anche con auto-apply `off`; con `properties` il body resta vuoto; con `full` il body viene copiato dall'auto-apply (origine: src/features/folderTemplateMenu.ts:85)
 - [ ] Espressioni `<% %>` nel parent: il nuovo template resta raw, nessuna espressione valutata (origine: src/features/folderTemplateMenu.ts:85)

@@ -1,22 +1,24 @@
-import { Menu, Notice, Plugin, TFile, TFolder, normalizePath } from "obsidian";
+import { App, Menu, Notice, Plugin, TFile, TFolder, normalizePath } from "obsidian";
 import { getTemplateOfFolder, reconformFile } from "../core/templateAPI";
 import { holdTemplaterPendingTemplate } from "../core/templaterBridge";
 import { getTemplateFilename } from "../settings";
 
 /**
- * AI: Folder context-menu action that creates the folder template (feature C).
+ * AI: Entry points that create the folder template (feature C).
  *
  * Role in the architecture:
  * Creating a template by hand means remembering `templateBasename` and placing
- * the file in the right folder. This module makes the action discoverable from
- * the folder menu (desktop right-click, mobile long-press) without adding a
- * command to the palette:
+ * the file in the right folder. This module exposes the same action from two
+ * places, so it stays discoverable on desktop and mobile:
  *
- * - no local template and no ancestor → `New root template (!Template.md)`;
- * - no local template but an ancestor exists → `New child template` (it will
- *   inherit the parent's properties);
- * - local template already present → disabled `Template already exists`, so
- *   the entry still signals the state.
+ * - folder menu: right-click on a folder (long-press on mobile);
+ * - command palette: the folder of the active note.
+ *
+ * - no local template and no ancestor → `New root cascade template`;
+ * - no local template but an ancestor exists → `New child cascade template`
+ *   (it will inherit the parent's properties);
+ * - local template already present → disabled `Cascade template already in
+ *   folder`, so the entry still signals the state.
  *
  * The file is created empty and its properties are seeded **immediately** with
  * the same `reconformFile(..., "add-missing")` engine as the panel, even when
@@ -36,6 +38,27 @@ export function registerFolderTemplateMenu(plugin: Plugin): void {
 			addFolderTemplateMenuItem(plugin, menu, file);
 		})
 	);
+}
+
+/**
+ * AI: Registers the command-palette entry for the same action.
+ *
+ * "Current folder" is the folder of the active note: the palette has no folder
+ * selection, so the command is disabled (native `checkCallback` behaviour)
+ * when no file view is active instead of silently guessing the vault root.
+ * The menu stays the primary entry point because it can target any folder.
+ */
+export function registerFolderTemplateCommand(plugin: Plugin): void {
+	plugin.addCommand({
+		id: "create-folder-template",
+		name: "Create cascade template in current folder",
+		checkCallback: checking => {
+			const folder = activeFileFolder(plugin.app);
+			if (!folder) return false;
+			if (!checking) runCreateFolderTemplate(plugin, folder);
+			return true;
+		},
+	});
 }
 
 /** AI: Adds the create entry, or the disabled "already exists" one. */
@@ -70,12 +93,34 @@ function addFolderTemplateMenuItem(plugin: Plugin, menu: Menu, folder: TFolder):
 		.setTitle(title)
 		.setIcon("file-plus")
 		// .setSection("cascade-templates")
-		.onClick(() => {
-			void createFolderTemplate(plugin, folder).catch(error => {
-				console.error("[cascade-templates] Could not create the folder template", error);
-				new Notice(`Cascade Templates: could not create template at ${path}.`);
-			});
-		}));
+		.onClick(() => runCreateFolderTemplate(plugin, folder)));
+}
+
+/** AI: Folder of the active note, or undefined when no file view is active. */
+function activeFileFolder(app: App): TFolder | undefined {
+	const parent = app.workspace.getActiveFile()?.parent;
+	return parent instanceof TFolder ? parent : undefined;
+}
+
+/**
+ * AI: Shared runner for the menu and the palette command.
+ *
+ * The menu already disables itself when the template exists; the command
+ * cannot, so it reports the existing file instead of doing nothing. Creation
+ * failures are reported with the same Notice in both entry points.
+ */
+function runCreateFolderTemplate(plugin: Plugin, folder: TFolder): void {
+	const path = templatePath(folder);
+
+	if (plugin.app.vault.getAbstractFileByPath(path) instanceof TFile) {
+		new Notice(`Cascade template already in this folder: ${path}`);
+		return;
+	}
+
+	void createFolderTemplate(plugin, folder).catch(error => {
+		console.error("[cascade-templates] Could not create the folder template", error);
+		new Notice(`Cascade Templates: could not create template at ${path}.`);
+	});
 }
 
 /** AI: Vault path of the template inside `folder`, vault root included. */
