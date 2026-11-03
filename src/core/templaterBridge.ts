@@ -28,6 +28,9 @@ const TEMPLATER_PLUGIN_ID = "templater-obsidian";
 /** AI: Default Templater delimiter; enough to tell "this is a script". */
 const TEMPLATER_SYNTAX = /<%/;
 
+/** AI: Script block marker (`<%* … %>`): the block runs JavaScript. */
+const TEMPLATER_SCRIPT_SYNTAX = /<%\*/;
+
 /**
  * AI: Run mode passed to Templater's running config. `2` is
  * `RunMode.OverwriteActiveFile`, the closest match to "process this note".
@@ -55,6 +58,17 @@ interface PluginsHost {
  */
 export function hasTemplaterSyntax(value: unknown): value is string {
 	return typeof value === "string" && TEMPLATER_SYNTAX.test(value);
+}
+
+/**
+ * AI: True when `value` contains a Templater script block (`<%* … %>`).
+ *
+ * Such blocks execute JavaScript with the plugin's privileges; the value is
+ * still legitimate template syntax, so the bridge never blocks it. This helper
+ * only powers the non-blocking warning in the reconform tooltip (G).
+ */
+export function hasScriptSyntax(value: unknown): value is string {
+	return typeof value === "string" && TEMPLATER_SCRIPT_SYNTAX.test(value);
 }
 
 /**

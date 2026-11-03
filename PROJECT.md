@@ -76,11 +76,16 @@ Dettagli:
 - Chiudere **non è un revert**: la history è scartata, lo stato corrente resta.
 - L'edit manuale è interpretato come **hand-off**: l'utente prende il controllo, la sessione guidata termina e il pulsante riparte da Update.
 
-## 7. Templater (opzionale)
+## 7. Templater (opzionale, opt-in)
 
-- Ponte **opt-in**, solo note; i `!Template.md` conservano sempre le espressioni raw.
-- Se attivo, i valori con sintassi `<%` sono valutati in scrittura; altrimenti il reconform avvisa nel tooltip.
-- Nelle impostazioni la riga **Templater bridge test** parte con `---`. Il pulsante Test valuta una piccola espressione sulla nota attiva e sostituisce `---` con stato e versione (es. `Templater detected v2.18.1 - bridge established`, oppure `bridge failed` / `not detected`).
+- Ponte **opt-in e spento di default**, solo note; i `!Template.md` conservano sempre le espressioni raw.
+- Il consenso è **per dispositivo e per vault**: vive in `app.loadLocalStorage` / `saveLocalStorage` (chiave `cascade-templates:evaluate-templater-in-notes`), non in `data.json`, e quindi non viene sincronizzato. Ogni dispositivo deve attivarlo separatamente. La lettura non è in cache e valida il valore (`stored === true`); qualsiasi errore di storage equivale a spento.
+- Attivazione: il toggle apre un modal nativo con l'avviso di rischio e la checkbox `I understand the risks`; `Enable` resta disabilitato finché la checkbox non è spuntata. Conferma → flag scritto e toggle ON. Annulla / Esc / X → nessuna scrittura e toggle di nuovo OFF.
+- Primo avvio dopo l'aggiornamento: una Notice non modale per dispositivo/vault (marker `cascade-templates:templater-notice-shown`), perché il vecchio default era ON e il cambio non deve passare in silenzio.
+- Capability probe all'apertura della tab: `<% 1 + 1 %>` via `create_running_config` + `parse_template`. Target: nota attiva, altrimenti primo `.md` del vault, altrimenti stato esplicito `Create a note first to verify the bridge`. Stati della riga: `Checking…`, `bridge verified`, `bridge verification failed`, `Templater not detected — option unavailable`. Il probe gira una volta per sessione, è invalidato dal cambio di versione di Templater e `Test again` lo ripete. Il toggle è abilitato solo a probe riuscito.
+- Se il flag è ON ma Templater non è più disponibile, il runtime degrada al valore raw senza scrivere nulla di rotto.
+- Con il ponte attivo i valori con sintassi `<%` sono valutati in scrittura; altrimenti il valore è copiato raw. Il tooltip del reconform ha tre stati: ponte spento → invito ad attivarlo; consenso ON ma Templater assente → `expressions are written verbatim`; `<%* … %>` nel template → avviso che esegue codice.
+- La riga **Templater bridge test** mostra lo stato del probe e ospita `Test again`; non è una setting e non viene persistita.
 - Se in Templater è attivo `trigger_on_file_creation`, Templater valuta le espressioni `<% %>` anche nei file `!Template.md`: i template non restano grezzi. È un comportamento esterno al plugin; disattivare quel trigger per conservare le espressioni.
 
 ## 8. Non invasività
@@ -91,7 +96,8 @@ Dettagli:
 
 ## 9. Compatibilità
 
-- **Baseline: Obsidian 1.13.0** (`minAppVersion`). La 1.13 porta l'API dichiarativa delle impostazioni, i contenitori nativi dei modal (X di chiusura compresa) e il ridisegno della settings tab: è il floor su cui nasce la UI della feature F, e sotto quella soglia si sarebbero dovute reimplementare a mano strutture che l'app ora fornisce.
+- **Baseline: Obsidian 1.13.0** (`minAppVersion`). La 1.13 porta l'API dichiarativa delle impostazioni, i contenitori nativi dei modal (X di chiusura compresa) e il ridisegno della settings tab; sotto quella soglia si sarebbero dovute reimplementare a mano strutture che l'app ora fornisce.
+- **Settings UI dichiarativa**: la tab usa `getSettingDefinitions()` come unica implementazione, senza `display()` né `new Setting(containerEl)`. `getControlValue()` / `setControlValue()` sono sovrascritti per leggere e scrivere lo store module-level; il bridge test resta l'unico `render`. Ogni riga con un nome stabile entra nella ricerca globale delle impostazioni.
 - **Taglio dichiarato**: chi è su 1.11/1.12 smette di ricevere aggiornamenti. Va detto nel README (sezione Compatibility) e nella release; un solo salto 1.5 → 1.13, senza scala di fallback né supporto duale.
 - I tipi del pacchetto dev `obsidian` sono **pinnati alla linea 1.13** (`~1.13.0`): il compilatore impedisce di usare API più nuove di quelle dichiarate.
 - Le icone **Lucide** sono un asset runtime legato alla versione di Obsidian: rendono tutte tramite `setIconSafe` / `resolvableIcon` (fallback), così non dettano la soglia.
@@ -126,7 +132,7 @@ Dettagli:
 
 ## 13. Stato e aperti
 
-- Versione **1.0.0**: cascata, pannello, auto-apply, settings e Templater pronti; scanner implementato ma non esposto.
+- Versione **1.0.2**: cascata, pannello, auto-apply, settings dichiarative (Obsidian 1.13+) e bridge Templater opt-in per dispositivo; scanner implementato ma non esposto.
 - Aperti:
   - **E2** autofix dello scanner e "fix all" riusando `reconformFile`, spingendo in history come la UI.
   - Riattivazione dello scanner: reimportare `TemplateScannerModal` in `main.ts` e ripristinare i settings.
@@ -137,12 +143,14 @@ Dettagli:
 ## 14. Riferimenti al codice
 
 - `main.ts` — entry del plugin (`onload` / `onunload`); qui si collegano settings → core → UI.
-- `src/settings.ts` — modello impostazioni, persistenza, `PluginSettingTab`; espone `getTemplateFilename()` / `isTemplateFile()`.
+- `src/settings.ts` — modello impostazioni, persistenza, tab dichiarativa (`getSettingDefinitions()`, override di `getControlValue()` / `setControlValue()`) e probe Templater; espone `getTemplateFilename()` / `isTemplateFile()`.
+- `src/core/templaterConsent.ts` — consenso Templater per dispositivo/vault e marker della Notice una-tantum; nessuna cache, `stored === true`, errori di storage = spento.
 - `src/core/templateAPI.ts` — risoluzione del template, lettura/scrittura frontmatter, `reconformFile`, `computeReconformProps`, `computeTemplateConformance`, auto-apply. Contesto del plugin a livello di modulo: `init(this)` in `onload`, poi `getCtx().app` dentro queste funzioni, mai `this.app`.
 - `src/core/mapOperations.ts` — merge, conformità, `areMapsEqual`.
 - `src/core/setOperations.ts` — helper Set puri (sostituzione mobile-safe dei metodi TC39).
 - `src/core/reconformHistory.ts` — stack Back per `MarkdownView` (snapshot prima di ogni azione).
-- `src/core/templaterBridge.ts` — ponte Templater (props e body); disponibilità e versione per lo stato nelle impostazioni.
+- `src/core/templaterBridge.ts` — ponte Templater (props e body); disponibilità e versione per lo stato nelle impostazioni; `hasScriptSyntax` per l'avviso sui blocchi `<%* %>`.
+- `src/features/TemplaterConsentModal.ts` — modal di consenso nativo (`ConfirmationModal`) con checkbox bloccante e `Enable` disabilitato.
 - `src/features/metadataPanel.ts` — UI, stati del cursore, sessione, visibilità.
 - `src/scanner/` — `TemplateScannerModal`, `ScannerABC`, `CoherenceScanner`, `TemplateCoherenceScanner`; cache-only, non importato in 1.0.0.
 - `src/conts.ts` — soli default statici (`DEFAULT_TEMPLATE_BASENAME = "!Template"`).

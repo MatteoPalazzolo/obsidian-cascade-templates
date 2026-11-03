@@ -13,6 +13,7 @@ import {
 	hasTemplaterSyntax,
 	isTemplaterAvailable,
 } from "./templaterBridge";
+import { isTemplaterEvaluationEnabled } from "./templaterConsent";
 
 // AI: pure computations live in `./conformance`; re-exported for the panel and
 // the scanner, which historically imported them from this module.
@@ -312,10 +313,11 @@ export async function reconformFile(file: TFile | undefined, mode: ReconformMode
  * be rendered keeps its raw form, so the operation never breaks the note.
  */
 async function resolveTemplaterExpressions(file: TFile, props: Map<string, unknown>): Promise<Map<string, unknown>> {
-	if (!getSettings().evaluateTemplaterInNotes) return props;
 	if (isTemplateFile(file)) return props;
 
 	const app = getCtx().app;
+	// G: consent is per device and per vault, read once for this operation.
+	if (!isTemplaterEvaluationEnabled(app)) return props;
 	if (!isTemplaterAvailable(app)) return props;
 	if (![...props.values()].some(hasTemplaterSyntax)) return props;
 
@@ -342,10 +344,10 @@ async function resolveTemplaterExpressions(file: TFile, props: Map<string, unkno
  * literal source even when a parent body is inherited.
  */
 async function resolveAutoApplyBody(file: TFile, body: string): Promise<string> {
-	if (!getSettings().evaluateTemplaterInNotes) return body;
 	if (isTemplateFile(file)) return body;
 
 	const app = getCtx().app;
+	if (!isTemplaterEvaluationEnabled(app)) return body;
 	if (!isTemplaterAvailable(app)) return body;
 	if (!hasTemplaterSyntax(body)) return body;
 

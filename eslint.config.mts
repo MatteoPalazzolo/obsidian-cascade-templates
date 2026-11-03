@@ -19,6 +19,8 @@ import { defineConfig, globalIgnores } from 'eslint/config';
  *   `@types/node@16` does not type.
  * - `eslint.config.*` is not part of the tsconfig program, hence
  *   `allowDefaultProject` (it only has to be parseable, not type-checked).
+ * - `Templater` is a proper noun (the community plugin), not a sentence-case
+ *   violation: the rule keeps its canonical casing everywhere in UI text.
  */
 export default defineConfig(
 	globalIgnores([
@@ -45,6 +47,9 @@ export default defineConfig(
 					allowDefaultProject: ['eslint.config.*'],
 				},
 			},
+		},
+		rules: {
+			'obsidianmd/ui/sentence-case': ['warn', { ignoreWords: ['Templater'] }],
 		},
 	},
 );

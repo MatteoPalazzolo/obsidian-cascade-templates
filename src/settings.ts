@@ -1,7 +1,12 @@
-import { Plugin, PluginSettingTab, type Setting, TAbstractFile } from "obsidian";
+import { Plugin, PluginSettingTab, type Setting, TAbstractFile, TFile } from "obsidian";
 import type { SettingDefinitionItem } from "obsidian";
 import { DEFAULT_TEMPLATE_BASENAME, TEMPLATE_FILE_EXTENSION } from "./conts";
 import { evaluateTemplaterContent, getTemplaterVersion, isTemplaterAvailable } from "./core/templaterBridge";
+import {
+	isTemplaterEvaluationEnabled,
+	setTemplaterEvaluationEnabled,
+} from "./core/templaterConsent";
+import { confirmTemplaterConsent } from "./features/TemplaterConsentModal";
 
 /**
  * AI: Settings model, persistence and accessors.
@@ -60,13 +65,6 @@ export interface CascadeTemplatesSettings {
 	 */
 	templateBasename: string;
 
-	/**
-	 * AI: When true, reconforming a **note** evaluates `<% … %>` values coming
-	 * from the template through Templater (Sessione G). Templates are never
-	 * evaluated. Default off: without it the raw value is copied verbatim.
-	 */
-	evaluateTemplaterInNotes: boolean;
-
 	/** AI: Behaviour on new files (D1); see `AutoApplyMode`. */
 	autoApply: AutoApplyMode;
 
@@ -87,7 +85,6 @@ export interface CascadeTemplatesSettings {
 /** AI: Fallbacks applied on top of whatever `data.json` contains. */
 export const DEFAULT_SETTINGS: CascadeTemplatesSettings = {
 	templateBasename: DEFAULT_TEMPLATE_BASENAME,
-	evaluateTemplaterInNotes: true,
 	autoApply: "full",
 	panelVisibility: "always",
 	scannerExcludeFolders: [],
@@ -181,11 +178,16 @@ export function getSettings(): Readonly<CascadeTemplatesSettings> {
 	return settings;
 }
 
+/** AI: Notifies the subscribers with the current settings, without writing. */
+function notifySettingsListeners(): void {
+	for (const listener of [...listeners]) listener(settings);
+}
+
 /** AI: Merges a patch, persists it and notifies the listeners. */
 export async function updateSettings(patch: Partial<CascadeTemplatesSettings>): Promise<void> {
 	settings = { ...settings, ...patch };
 	await plugin?.saveData(settings);
-	for (const listener of [...listeners]) listener(settings);
+	notifySettingsListeners();
 }
 
 /** AI: Subscribes to settings changes; returns the unsubscribe function. */
@@ -221,6 +223,56 @@ export function isTemplateFile(file: TAbstractFile | undefined | null): boolean 
 }
 
 /**
+ * AI: Control key of the Templater toggle. The value does **not** come from
+ * `data.json` any more (G): it is read from the vault-specific local storage
+ * through `getControlValue` / `setControlValue`, so it can never travel with a
+ * synced vault. Keeping the old key name only identifies the row.
+ */
+const BRIDGE_CONTROL_KEY = "evaluateTemplaterInNotes";
+
+/**
+ * AI: Result of the capability probe, cached for the plugin session only.
+ *
+ * - `idle`        → never probed in this session.
+ * - `checking`    → probe in flight; toggle disabled.
+ * - `ok`          → Templater evaluated the probe expression; toggle enabled.
+ * - `failed`      → Templater is there but evaluation failed.
+ * - `no-target`   → no active/first markdown note to run the probe against.
+ * - `unavailable` → Templater plugin not installed/enabled; toggle disabled.
+ *
+ * The cache is invalidated when `getTemplaterVersion()` changes, which is how
+ * enabling/disabling or updating Templater gets picked up without polling.
+ * It lives at module level so reopening the settings tab does not re-probe.
+ */
+type BridgeProbeState = "idle" | "checking" | "ok" | "failed" | "no-target" | "unavailable";
+
+let bridgeProbeState: BridgeProbeState = "idle";
+let bridgeProbeVersion: string | null = null;
+let bridgeProbeInFlight = false;
+
+/**
+ * AI: Description of the Templater toggle. The per-device note is always
+ * visible (it is part of the informed consent), and turns into a warning once
+ * the bridge is enabled so the user cannot forget the other devices.
+ */
+function bridgeToggleDescription(enabled: boolean): DocumentFragment {
+	return createFragment(fragment => {
+		fragment.append(
+			"Requires the Templater community plugin (v2.x or later); without it this option stays disabled. " +
+			"When a note is reconformed or created with \"Properties and body\", evaluate \"<% … %>\" values " +
+			"coming from the template. Never applied to template files."
+		);
+		fragment.createEl("br");
+		const note = fragment.createSpan({
+			text:
+				"This setting is stored on this device for this vault only and must be enabled separately " +
+				"on each device.",
+		});
+		if (enabled) note.addClass("mod-warning");
+	});
+}
+
+/**
  * AI: Settings tab (Settings → Community plugins → Cascade Templates).
  *
  * The tab is **declarative** (Obsidian 1.13+): it describes its rows through
@@ -252,8 +304,6 @@ export class CascadeTemplatesSettingTab extends PluginSettingTab {
 	 * actually drawn.
 	 */
 	getSettingDefinitions(): SettingDefinitionItem[] {
-		const templaterAvailable = isTemplaterAvailable(this.app);
-
 		return [
 			{
 				name: "Template file name",
@@ -278,48 +328,23 @@ export class CascadeTemplatesSettingTab extends PluginSettingTab {
 				},
 			},
 			{
-				name: "Evaluate template expressions in notes",
-				desc: templaterAvailable
-					? `Evaluate "<% … %>" values coming from templates when writing to notes; never applied to template files.`
-					: "Templater is not installed or not enabled, so expressions are copied verbatim into notes.",
+				name: "Templater bridge",
+				desc: bridgeToggleDescription(isTemplaterEvaluationEnabled(this.app)),
 				control: {
 					type: "toggle",
-					key: "evaluateTemplaterInNotes",
-					// AI: Re-evaluated on every DOM refresh; the feature is useless
-					// without the Templater plugin, so the toggle stays unavailable.
-					disabled: () => !isTemplaterAvailable(this.app),
+					key: BRIDGE_CONTROL_KEY,
+					// AI: Enabled only after the capability probe passed. The
+					// predicate is re-evaluated on every DOM refresh, so the probe
+					// result reaches the row without a full re-render.
+					disabled: () => !this.bridgeReady(),
 				},
 			},
 			{
 				name: "Templater bridge test",
-				desc: "Check that Templater can evaluate an expression in the active note.",
-				// AI: The only imperative row: a button plus a description that the
-				// click rewrites locally. The result is not a setting and is never
-				// persisted. G will extend this row with the probe states.
-				render: (setting: Setting) => {
-					setting.addButton(button => button
-						.setButtonText("Test")
-						.onClick(async () => {
-							const target = this.app.workspace.getActiveFile();
-							if (!target) {
-								setting.setDesc("Open a note before testing");
-								return;
-							}
-
-							const version = getTemplaterVersion(this.app);
-							const detected = version ? `Templater detected v${version}` : "Templater detected";
-
-							if (!isTemplaterAvailable(this.app)) {
-								setting.setDesc("Templater not detected");
-								return;
-							}
-
-							const rendered = await evaluateTemplaterContent(this.app, "<% 1 + 1 %>", target);
-							setting.setDesc(rendered === null
-								? `${detected} — bridge failed`
-								: `${detected} — bridge established`);
-						}));
-				},
+				desc: "Check that Templater can evaluate an expression in this vault.",
+				// AI: The only imperative row. The probe result is not a setting and
+				// is never persisted; the description changes with the probe state.
+				render: (setting: Setting) => this.renderBridgeStatus(setting),
 			},
 			{
 				name: "Show the properties toolbar",
@@ -337,19 +362,171 @@ export class CascadeTemplatesSettingTab extends PluginSettingTab {
 	}
 
 	/**
-	 * AI: Reads a `control` value from our module-level store. Obsidian calls
-	 * this on every render of the row.
+	 * AI: Reads a `control` value. The Templater toggle bypasses `data.json`
+	 * and reads the per-device consent from local storage (G); every other row
+	 * reads the module-level settings store. Obsidian calls this on every
+	 * render of the row.
 	 */
 	getControlValue(key: string): unknown {
+		if (key === BRIDGE_CONTROL_KEY) return isTemplaterEvaluationEnabled(this.app);
 		return getSettings()[key as keyof CascadeTemplatesSettings];
 	}
 
 	/**
-	 * AI: Writes a `control` value through the normal settings path, so
-	 * persistence (`data.json`) and the panel refresh (D3) stay in one place.
+	 * AI: Writes a `control` value. The Templater toggle goes through the
+	 * consent modal first and writes local storage only after confirmation;
+	 * every other row keeps the normal settings path (persistence + listeners).
 	 * Overriding this also replaces Obsidian's automatic `saveData()`.
 	 */
 	async setControlValue(key: string, value: unknown): Promise<void> {
+		if (key === BRIDGE_CONTROL_KEY) {
+			await this.setBridgeEnabled(value === true);
+			return;
+		}
 		await updateSettings({ [key]: value });
+	}
+
+	/**
+	 * AI: True when the bridge can be enabled: Templater is available and the
+	 * probe succeeded. Used both as the toggle's `disabled` predicate and as a
+	 * guard in `setBridgeEnabled`.
+	 */
+	private bridgeReady(): boolean {
+		return isTemplaterAvailable(this.app) && bridgeProbeState === "ok";
+	}
+
+	/**
+	 * AI: Applies a toggle change. Enabling always asks for consent first and
+	 * writes nothing when the modal is dismissed; disabling is immediate. The
+	 * `update()` calls re-read storage so a cancelled modal visually flips the
+	 * toggle back and the per-device warning follows the real value.
+	 */
+	private async setBridgeEnabled(enabled: boolean): Promise<void> {
+		if (!enabled) {
+			setTemplaterEvaluationEnabled(this.app, false);
+			notifySettingsListeners();
+			this.update();
+			return;
+		}
+
+		if (!this.bridgeReady() || !(await confirmTemplaterConsent(this.app))) {
+			this.update();
+			return;
+		}
+
+		setTemplaterEvaluationEnabled(this.app, true);
+		// Consent is not part of `data.json`, so `updateSettings` cannot fan it
+		// out: notify the panels explicitly so the reconform tooltip follows.
+		notifySettingsListeners();
+		this.update();
+	}
+
+	/**
+	 * AI: Draws the probe status line and, when a result exists, the
+	 * `Test again` action. Called from the row's `render`, i.e. only when the
+	 * settings tab is actually displayed: this is what keeps the probe out of
+	 * the search-index registration path.
+	 */
+	private renderBridgeStatus(setting: Setting): void {
+		if (!isTemplaterAvailable(this.app)) {
+			bridgeProbeState = "unavailable";
+			setting.setDesc("Templater not detected — option unavailable");
+			return;
+		}
+
+		this.requestProbe(false);
+
+		if (bridgeProbeState === "idle" || bridgeProbeState === "checking") {
+			setting.setDesc("Checking…");
+			return;
+		}
+
+		if (bridgeProbeState === "no-target") {
+			setting.setDesc("Create a note first to verify the bridge");
+		} else if (bridgeProbeState === "failed") {
+			setting.setDesc(`${this.detectedLabel()} — bridge verification failed`);
+		} else {
+			setting.setDesc(`${this.detectedLabel()} — bridge verified`);
+		}
+
+		setting.addButton(button => button
+			.setButtonText("Test again")
+			.onClick(() => {
+				this.requestProbe(true);
+				// Safe here: this is a click handler, not a row render.
+				this.update();
+			}));
+	}
+
+	/**
+	 * AI: Starts the probe when needed. `force` comes from `Test again`; the
+	 * automatic path runs once per plugin session and reruns when Templater's
+	 * version changes. The actual evaluation is deferred so `update()` never
+	 * rebuilds the definitions from inside a row render.
+	 */
+	private requestProbe(force: boolean): void {
+		if (bridgeProbeInFlight) return;
+
+		if (!isTemplaterAvailable(this.app)) {
+			bridgeProbeState = "unavailable";
+			return;
+		}
+
+		const version = getTemplaterVersion(this.app);
+		// Re-probe when Templater's version changed, and always after an earlier
+		// "unavailable" (Templater may have been enabled without changing a
+		// version we could read).
+		const alreadyValid = bridgeProbeState !== "idle"
+			&& bridgeProbeState !== "unavailable"
+			&& bridgeProbeVersion === version;
+		if (!force && alreadyValid) return;
+
+		bridgeProbeState = "checking";
+		bridgeProbeVersion = version;
+		bridgeProbeInFlight = true;
+
+		window.setTimeout(() => {
+			void this.runProbe();
+		}, 0);
+	}
+
+	/**
+	 * AI: Evaluates a trivial expression through Templater. The target is the
+	 * active note when it is markdown, otherwise the first markdown file; a
+	 * vault without notes yields the explicit `no-target` state instead of a
+	 * failure. The probe never writes and never touches user content.
+	 */
+	private async runProbe(): Promise<void> {
+		try {
+			const target = this.probeTarget();
+			if (!target) {
+				bridgeProbeState = "no-target";
+				return;
+			}
+
+			if (!isTemplaterAvailable(this.app)) {
+				bridgeProbeState = "unavailable";
+				return;
+			}
+
+			const rendered = await evaluateTemplaterContent(this.app, "<% 1 + 1 %>", target);
+			bridgeProbeState = rendered === null ? "failed" : "ok";
+		} finally {
+			bridgeProbeInFlight = false;
+			this.update();
+		}
+	}
+
+	/** AI: Active markdown note, else the first markdown file, else `null`. */
+	private probeTarget(): TFile | null {
+		const active = this.app.workspace.getActiveFile();
+		if (active?.extension === "md") return active;
+		return this.app.vault.getMarkdownFiles()[0] ?? null;
+	}
+
+	/** AI: `Templater detected vX`, or a version-less fallback. */
+	private detectedLabel(): string {
+		const version = getTemplaterVersion(this.app);
+		return version ? `Templater detected v${version}` : "Templater detected";
 	}
 }

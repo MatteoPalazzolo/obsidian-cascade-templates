@@ -179,9 +179,11 @@ The reconform button in the properties toolbar cycles through three consecutive 
 
 Back undoes the last step and rewinds the button. Existing notes are never modified unless the button is pressed, and the toolbar can be hidden on notes that have no template.
 
-### Templater integration (optional)
+### Templater integration (optional, opt-in)
 
-Template properties and bodies may contain `<% … %>` expressions, which templates preserve verbatim. When the corresponding setting is enabled, the plugin evaluates them while writing to a note, so the note receives the resulting value instead of the raw expression. Evaluation is never applied to template files; script blocks (`<%* … %>`) execute code and should only be used in templates you trust.
+Template properties and bodies may contain `<% … %>` expressions, which templates preserve verbatim. The bridge is **off by default**: enable it in the plugin settings, read the warning and confirm it in the dialog before any evaluation happens. When it is on, the plugin evaluates the expressions while writing to a note, so the note receives the resulting value instead of the raw expression; when it is off, the values are copied verbatim and the reconform tooltip points this out.
+
+The permission is stored **on the current device for the current vault only**, not in the synced vault data, so it must be enabled separately on every device where the vault is used; turning it off does not change any existing note. Evaluation is never applied to template files; script blocks (`<%* … %>`) execute code and should only be used in templates you trust.
 
 ### Settings
 
@@ -189,7 +191,7 @@ All behaviour is configured in the plugin settings, without any per-folder confi
 
 - template file name;
 - auto-apply mode (disabled, properties only, properties and body);
-- Templater evaluation in notes;
+- Templater bridge, opt-in and stored per device (requires the Templater community plugin);
 - toolbar visibility (always, or only when a template applies).
 
 Each row can also be reached from Obsidian's global settings search.

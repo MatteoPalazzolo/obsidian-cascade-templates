@@ -1,4 +1,4 @@
-import { MarkdownView, Platform, Plugin, TAbstractFile, TFile, Workspace, WorkspaceLeaf, debounce } from "obsidian";
+import { App, MarkdownView, Platform, Plugin, TAbstractFile, TFile, Workspace, WorkspaceLeaf, debounce } from "obsidian";
 import {
 	computeReconformProps,
 	computeTemplateConformance,
@@ -10,7 +10,8 @@ import {
 } from "../core/templateAPI";
 import { areMapsEqual, computeMapConformance, type MapConformanceStatus } from "../core/mapOperations";
 import { back, clear as clearHistory, hasHistory, onHistoryChange, push } from "../core/reconformHistory";
-import { hasTemplaterSyntax } from "../core/templaterBridge";
+import { hasScriptSyntax, hasTemplaterSyntax, isTemplaterAvailable } from "../core/templaterBridge";
+import { isTemplaterEvaluationEnabled } from "../core/templaterConsent";
 import { getSettings, isTemplateFile } from "../settings";
 import { warnOnce } from "../utils/diagnostics";
 import { setIconSafe } from "../utils/icons";
@@ -254,6 +255,9 @@ const trackedViews = new Set<MarkdownView>();
 /** AI: Workspace handle captured at init time (same pattern as templateAPI). */
 let workspace: Workspace | undefined;
 
+/** AI: App handle, needed by the Templater warning to read consent (G). */
+let app: App | undefined;
+
 /** AI: Plugin version, attached to capability warnings for bug reports. */
 let pluginVersion = "";
 
@@ -265,6 +269,7 @@ let unsubscribeHistory: (() => void) | null = null;
  * The debounce coalesces the event bursts produced by layout changes.
  */
 export function init(plugin: Plugin): void {
+	app = plugin.app;
 	workspace = plugin.app.workspace;
 	pluginVersion = plugin.manifest.version;
 	const scheduleSync = debounce(() => syncAll(), 40, true);
@@ -567,16 +572,36 @@ async function refreshPanel(ui: PanelUI, fresh = false, contentChanged = false):
 }
 
 /**
- * AI: G4 — non-invasive warning shown on the reconform button when the template
- * carries Templater expressions but evaluating them is disabled.
+ * AI: G4 — non-invasive warning shown on the reconform button. Three distinct
+ * states, in priority order:
+ *
+ * - bridge disabled → invite the user to enable it (the expressions would be
+ *   copied as literal text);
+ * - consent on but Templater gone → the runtime is degraded to raw values;
+ * - script blocks present → warn that `<%* … %>` executes code.
+ *
+ * The panel never reads the body: only the template's frontmatter is in memory.
  */
 function templaterWarning(templateProps: Map<string, unknown>): string | null {
-	if (getSettings().evaluateTemplaterInNotes) return null;
+	const values = [...templateProps.values()];
+	if (!values.some(hasTemplaterSyntax)) return null;
 
-	const hasExpression = [...templateProps.values()].some(hasTemplaterSyntax);
-	return hasExpression
-		? "The template contains Templater expressions; enable \"Evaluate template expressions in notes\" to render them"
-		: null;
+	const host = app;
+	if (!host) return null;
+
+	if (!isTemplaterEvaluationEnabled(host)) {
+		return "The template contains Templater expressions; enable \"Templater bridge\" in the plugin settings to render them";
+	}
+
+	if (!isTemplaterAvailable(host)) {
+		return "Templater is not available: expressions are written verbatim";
+	}
+
+	if (values.some(hasScriptSyntax)) {
+		return "The template contains script blocks that run code when evaluated";
+	}
+
+	return null;
 }
 
 /**

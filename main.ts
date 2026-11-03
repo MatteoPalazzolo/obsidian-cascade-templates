@@ -8,6 +8,7 @@ import {
 	disposeHistory,
 	registerHistoryLifecycle,
 } from 'src/core/reconformHistory';
+import { maybeShowTemplaterNotice } from 'src/core/templaterConsent';
 import * as MetadataPanel from 'src/features/metadataPanel';
 import {
 	CascadeTemplatesSettingTab,
@@ -26,6 +27,10 @@ export default class extends Plugin {
 		// Settings first: the template file name is read synchronously by the
 		// other modules, so it must be loaded before they can do anything.
 		await initSettings(this);
+
+		// G: the bridge used to be opt-out and synced with the vault; tell the
+		// user once (per device) that consent is now local and off by default.
+		maybeShowTemplaterNotice(this.app);
 
 		// init modules
 		initTemplateAPIModule(this);
