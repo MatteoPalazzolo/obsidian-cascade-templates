@@ -42,6 +42,12 @@ const TEMPLATER_RUN_MODE_OVERWRITE_FILE = 2;
 interface TemplaterApi {
 	create_running_config(templateFile: TFile | undefined, targetFile: TFile | undefined, runMode: number): unknown;
 	parse_template(config: unknown, content: string): Promise<string>;
+	/**
+	 * AI: Templater's own guard set for files it is creating. Templater's
+	 * on-create pass skips any path listed here; C uses it so the template we
+	 * create is neither evaluated nor overwritten.
+	 */
+	files_with_pending_templates?: Set<string>;
 }
 
 /** AI: Shape of `app.plugins` (not part of the public Obsidian typings). */
@@ -89,6 +95,37 @@ export function getTemplaterApi(app: App): TemplaterApi | null {
 /** AI: True when Templater is available. */
 export function isTemplaterAvailable(app: App): boolean {
 	return getTemplaterApi(app) !== null;
+}
+
+/**
+ * AI: How long a template created by the folder menu stays out of Templater's
+ * on-create pass. Templater checks the guard at ~300 ms, so 1 s leaves margin.
+ */
+const PENDING_TEMPLATE_HOLD_MS = 1000;
+
+/**
+ * AI: C — registers `path` in Templater's `files_with_pending_templates` set
+ * before the file is created.
+ *
+ * Returns a release function to call in `finally`: it removes the path after
+ * ~1 s, so Templater's on-create pass skips the new template. When Templater
+ * is absent the release is a no-op; when the set is missing (version mismatch)
+ * creation still works and we only log in debug, with no timer fallback.
+ */
+export function holdTemplaterPendingTemplate(app: App, path: string): () => void {
+	const templater = getTemplaterApi(app);
+	if (!templater) return () => undefined;
+
+	const pending = templater.files_with_pending_templates;
+	if (!pending) {
+		console.debug("[cascade-templates] Templater files_with_pending_templates not found");
+		return () => undefined;
+	}
+
+	pending.add(path);
+	return () => {
+		window.setTimeout(() => pending.delete(path), PENDING_TEMPLATE_HOLD_MS);
+	};
 }
 
 /**

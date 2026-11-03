@@ -316,7 +316,7 @@ export class CascadeTemplatesSettingTab extends PluginSettingTab {
 			},
 			{
 				name: "Apply the template to new files",
-				desc: "What a new file receives from its reference template; existing properties are always kept.",
+				desc: "What a new file receives from its reference template; existing properties are always kept. The folder menu's template action always inherits properties.",
 				control: {
 					type: "dropdown",
 					key: "autoApply",

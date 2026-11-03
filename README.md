@@ -141,13 +141,17 @@ This is meant to work alongside Templater script automations; the plugin exposes
 
 A template is a Markdown note named `!Template.md` (the name is configurable in the settings) whose YAML frontmatter defines the properties that notes in its scope are expected to carry. Its body is used as the initial content of new notes when body copying is enabled. Templates are ordinary vault files: they require no registration, are resolved with the same rules as notes, and their expressions are never evaluated by the plugin.
 
+### Creating a template from a folder
+
+Right-click a folder in the file explorer (long-press it on mobile) and choose **New root template** or **New child template**. The entry shows the configured template file name and is disabled when the folder already has one. The new file opens in a new tab and immediately inherits the properties of the nearest parent template, even when auto-apply is disabled; its body follows the auto-apply mode.
+
 ### Cascading templates
 
 A template applies to the folder that contains it and to all its descendants, until a nested `!Template.md` overrides it. Every template resolves its own reference template among its ancestors and extends it, so properties shared across folders are defined once and each level adds only its own. Inheritance is recursive and has no depth limit.
 
 ### Auto-apply on new notes
 
-When a note is created with an empty body, including a new nested `!Template.md`, the properties of its reference template are applied automatically, so the note starts conformant. Files that already contain content, such as notes arriving from sync or import, are left untouched. The settings expose three modes: disabled, properties only, properties and body.
+When a note is created with an empty body, including a new nested `!Template.md`, the properties of its reference template are applied automatically, so the note starts conformant. Files that already contain content, such as notes arriving from sync or import, are left untouched. The settings expose three modes: disabled, properties only, properties and body. Creating a template from the folder menu is explicit and always seeds its properties, regardless of the auto-apply mode.
 
 ### Template status icon
 

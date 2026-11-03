@@ -1,4 +1,4 @@
-import {MarkdownView, Plugin, TAbstractFile, TFile} from "obsidian";
+import {MarkdownView, Plugin, TFile, TFolder} from "obsidian";
 import {isMap, isPair, isScalar, parseDocument, Document as Doc} from 'yaml';
 import {getSettings, getTemplateFilename, isTemplateFile} from "../settings";
 import {areMapsEqual, mergeSecondOnFirstMap} from "./mapOperations";
@@ -96,24 +96,49 @@ export function registerTemplatezListener(): void {
 	);
 }
 
+/**
+ * AI: Walks from `start` upwards and returns the first template file found.
+ * `skipPath` lets the file variant ignore the file itself, so a template
+ * resolves to its parent instead of matching its own path.
+ */
+function findTemplateUpward(start: TFolder | null, skipPath?: string): TFile | undefined {
+	let folder: TFolder | null = start;
+	while (folder) {
+		const folderPath = folder.path === "/" ? "" : folder.path + "/";
+		const templateFile = getCtx().app.vault.getAbstractFileByPath(folderPath + getTemplateFilename());
+
+		if (templateFile instanceof TFile && templateFile.path !== skipPath) {
+			return templateFile;
+		}
+
+		folder = folder.parent;
+	}
+
+	return undefined;
+}
+
+/**
+ * AI: Nearest template in `folder` or in one of its ancestors.
+ *
+ * Added for the folder menu (C): the menu must know whether the folder already
+ * has a local template and, when it does not, whether a parent template exists
+ * (child vs root). It uses the same synchronous walk as `getTemplateOfFile`.
+ */
+export function getTemplateOfFolder(folder: TFolder | undefined): TFile | undefined {
+	return findTemplateUpward(folder ?? null);
+}
+
 export function getTemplateOfFile(file: TFile | undefined): TFile | undefined {
 	if (!file) return;
 
 	if (file.extension !== "md") return;
 
-	let f: TAbstractFile = file;
-	while (f.parent) {
-		f = f.parent;
-		const folderPath = f.path === "/" ? "" : f.path + "/";
-		const templateFile = getCtx().app.vault.getAbstractFileByPath(folderPath + getTemplateFilename());
+	const parent = file.parent;
+	if (!(parent instanceof TFolder)) return;
 
-		if (templateFile instanceof TFile && templateFile.path !== file.path) {
-			return templateFile;
-		}
-	}
-
-	// Reached the vault root without a template (`noImplicitReturns`).
-	return undefined;
+	// Start at the file's folder and skip the file itself: a template must
+	// resolve to its parent, never to its own path.
+	return findTemplateUpward(parent, file.path);
 }
 
 export function getActiveMarkdownView() {

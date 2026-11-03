@@ -41,22 +41,27 @@ questo file. La tabella è in **ordine di lavoro**, non alfabetico.
 
 | Lettera | Feature | Stato |
 |---|---|---|
+| **C** | Voce di menu per creare il template di cartella | in corso |
 | **B** | Cascade dashboard (ex scanner E) | spec |
-| **C** | Voce di menu per creare il template di cartella | spec |
 | **D** | Interfaces (`ct-interfaces`) | spec |
 | **D2** | Interfaces without a template (sequel di D) | idea |
 
 La colonna Stato segue «Stati»; a dire cosa viene prima è l'ordine, non lo
 stato.
 
-Ordine deciso: **B → C → D**. D2 non entra in piano finché D non è validata
-sul campo. A, F e G sono completate e archiviate in `PROJECT.md`.
+Ordine deciso: **B → C → D**, con C temporaneamente anticipata a B per una
+release pre-dashboard. D2 non entra in piano finché D non è validata sul campo.
+A, F e G sono completate e archiviate in `PROJECT.md`.
 
 Perché questo ordine:
 
-- **B prima di C e D.** B introduce il ritorno `{before, changes, changed}` di
-  `reconformFile` e gli helper della foresta che C e D usano; C è scritta
-  contro quel contratto e `main.ts` viene toccata da B e C una volta sola.
+- **C anticipata a B (temporaneo).** C non usa il nuovo ritorno di
+  `reconformFile` né gli helper della foresta: crea il file, riusa
+  `add-missing` e delega il body all'auto-apply. È indipendente da B e adatta a
+  una release pre-dashboard; B resta la prossima feature grande e toccherà
+  `main.ts` una seconda volta.
+- **B prima di D.** B introduce il ritorno `{before, changes, changed}` di
+  `reconformFile` e gli helper della foresta che D usa.
 - **D per ultima.** Tocca pannello, foresta e dashboard: arriva quando
   l'universo della foresta è stabile.
 - **D2 fuori piano.** Dipende dagli aperti di D e di B.
@@ -71,7 +76,8 @@ Vincoli da rispettare durante l'implementazione:
   chiavi» e l'aperto «`ct-interfaces` è un'eccezione value-level?» (vedi D)
   vanno decisi prima di congelare la regola nel README: D arriva dopo e non
   deve smentirlo.
-- **Release.** B come release della dashboard, poi C e D.
+- **Release.** C in una release pre-dashboard, B come release della dashboard,
+  poi D.
 - **Lettere storiche nel codice.** I commenti usano ancora le sessioni
   (C = pannello, D = impostazioni, E = scanner, G = bridge), che non
   coincidono con queste lettere: non si rinominano, se ne tiene conto in
@@ -653,9 +659,11 @@ perché fa I/O sulle view.
 
 ## (C) Voce di menu per creare il template di cartella
 
-Stato: spec — dopo B, che introduce il ritorno
-`{before, changes, changed}` di `reconformFile` e gli helper della foresta
-usati qui.
+Stato: in corso — implementata anticipando B: `src/features/folderTemplateMenu.ts`,
+`getTemplateOfFolder` in `src/core/templateAPI.ts` e
+`holdTemplaterPendingTemplate` in `src/core/templaterBridge.ts`. C ignora il
+ritorno di `reconformFile`, quindi non c'era dipendenza reale da B. Restano i
+check manuali in `YOUDO.md` e `npm run build` fuori sandbox.
 
 Perché: creare a mano un template richiede di ricordare il `templateBasename`
 configurato e di posizionare il file nella cartella giusta. Una voce nel menu
