@@ -143,7 +143,7 @@ A template is a Markdown note named `!Template.md` (the name is configurable in 
 
 ### Creating a template from a folder
 
-Right-click a folder in the file explorer (long-press it on mobile) and choose **New root cascade template** or **New child cascade template**. The entry is disabled as **Cascade template already in folder** when the folder already has one. The same action is available from the command palette as **Create cascade template in current folder**, which targets the folder of the active note. The new file opens in a new tab and immediately inherits the properties of the nearest parent template, even when auto-apply is disabled; its body follows the auto-apply mode.
+Right-click a folder in the file explorer (long-press it on mobile) and choose **New root cascade template** or **New child cascade template**. The entry is disabled as **Cascade template already in folder** when the folder already has one. The same action is available from the command palette as **Create cascade template in current folder**, which targets the folder of the active note and reports an existing template with an error-toned notice. The new file opens in a new tab and immediately inherits the properties of the nearest parent template, even when auto-apply is disabled; its body follows the auto-apply mode.
 
 ### Cascading templates
 
@@ -172,6 +172,8 @@ The status icon doubles as a navigation control for the reference template:
 - Ctrl/Cmd + Alt + Click: opens it in a new tab.
 
 On mobile, a tap reveals the template.
+
+The same reference template can be opened from the command palette with **Navigate to parent template**, which always opens it in a new tab. On a template file, the command targets its parent template.
 
 ### Reconform from template
 

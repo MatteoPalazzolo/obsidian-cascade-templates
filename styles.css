@@ -269,3 +269,11 @@ body.is-phone .cascade-templates-action {
     padding-inline: var(--size-2-2);
     gap: var(--size-2-1);
 }
+
+/* AI: error tone for the "template already exists" Notice (command palette).
+   The class is added to `Notice.messageEl` in folderTemplateMenu.ts, so only
+   the message text turns red while the container keeps Obsidian's native
+   notice background and border in every theme. */
+.cascade-templates-notice-error {
+    color: var(--text-error);
+}

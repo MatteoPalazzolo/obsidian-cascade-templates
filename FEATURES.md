@@ -680,6 +680,10 @@ Comportamento:
   cartella della nota attiva (non su una selezione del file explorer, che non
   ha API pubblica); senza una nota attiva il comando è disabilitato via
   `checkCallback` e non ripiega sulla root del vault;
+- command palette: `Navigate to parent template` apre in una nuova tab il
+  template di riferimento della nota attiva (per un template, il parent), con
+  la stessa risoluzione del pannello (`getTemplateOfFile`); senza nota attiva o
+  senza template il comando è disabilitato;
 - template locale assente e nessun template antenato:
   `New root cascade template`, icona `file-plus`;
 - template locale assente ma template antenato presente:
@@ -691,8 +695,8 @@ Comportamento:
   `file-check` per non sovrapporsi alla semantica di conformità), nessun click;
   serve solo a segnalare l'esistenza, anche se il file non è visibile. Il
   titolo resta generico, senza distinzione root/child; da palette il comando
-  resta eseguibile e mostra una Notice con il path esistente, perché un comando
-  disabilitato non spiegherebbe il motivo;
+  resta eseguibile e mostra una Notice con il path esistente in tono d'errore
+  (`--text-error`), perché un comando disabilitato non spiegherebbe il motivo;
 - il file nasce vuoto e riceve subito le proprietà del template antenato più
   vicino, anche con auto-apply `off`: è un'azione esplicita, non una cascata
   automatica;
@@ -719,9 +723,14 @@ Note implementative:
   conforme resta un errore della dashboard;
 - la distinzione root/child usa lo stesso walk sincrono di `getTemplateOfFile`:
   nessun costo aggiuntivo;
-- registrarsi su `file-menu` con la sola guardia `TFolder` e registrare il
-  comando con `checkCallback`; la verifica dal vivo (voce di menu,
-  raggruppamento, long-press mobile, palette) è tracciata in `YOUDO.md`;
+- `folderTemplateMenu.ts` possiede la voce di menu e il runner di creazione
+  condiviso; `templateCommands.ts` registra i due comandi con `checkCallback` e
+  risolve il target al momento dell'invocazione (`getActiveFile` →
+  `getTemplateOfFile`), mai una cache di `TFile`; la verifica dal vivo (voce di
+  menu, raggruppamento, long-press mobile, palette) è tracciata in `YOUDO.md`;
+- la Notice "template già presente" da palette colora solo `messageEl` con
+  `--text-error` (classe `cascade-templates-notice-error` in `styles.css`): il
+  contenitore resta quello nativo, leggibile su ogni tema;
 - aggiornare README e descrizione della setting auto-apply: l'azione esplicita
   eredita le proprietà anche con auto-apply disattivato.
 
@@ -731,8 +740,9 @@ Criteri di completamento:
 - root del vault, root di cascata e cartelle child;
 - cartella con template locale, con solo template antenato, senza nessuno dei
   due;
-- command palette su desktop e mobile: root, child, template già presente
-  (Notice con il path) e nessuna nota attiva (comando disabilitato);
+- command palette su desktop e mobile: create (root, child, template già
+  presente con Notice rossa, nessuna nota attiva → disabilitato) e navigate
+  (nota con template, template con parent, nota senza template → disabilitato);
 - `npm run build` e `npm test` verdi;
 - con Templater attivo, `trigger_on_file_creation` acceso e
   `files_with_pending_templates` presente, il template appena creato resta raw:
