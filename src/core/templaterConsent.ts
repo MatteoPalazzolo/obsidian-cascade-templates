@@ -69,8 +69,8 @@ export function maybeShowTemplaterNotice(app: App): void {
 	}
 
 	new Notice(
-		"Templater evaluation in notes is now opt-in and stored per device. " +
-		"Enable \"Templater bridge\" in the Cascade Templates settings if you want expressions evaluated.",
+		"Cascade Templates: Templater evaluation in notes is now opt-in and stored per device. " +
+		"Enable \"Templater bridge\" in the plugin settings if you want expressions evaluated.",
 		10000
 	);
 }
