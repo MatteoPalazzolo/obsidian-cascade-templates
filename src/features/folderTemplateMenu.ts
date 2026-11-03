@@ -40,14 +40,15 @@ export function registerFolderTemplateMenu(plugin: Plugin): void {
 
 /** AI: Adds the create entry, or the disabled "already exists" one. */
 function addFolderTemplateMenuItem(plugin: Plugin, menu: Menu, folder: TFolder): void {
-	const templateName = getTemplateFilename();
+	// const templateName = getTemplateFilename();
 	const path = templatePath(folder);
 
 	if (plugin.app.vault.getAbstractFileByPath(path) instanceof TFile) {
 		menu.addItem(item => item
-			.setTitle(`Template already exists (${templateName})`)
+			//.setTitle(`Template already exists (${templateName})`)
+			.setTitle(`Cascade template already in folder`)
 			.setIcon("file")
-			.setSection("action")
+			// .setSection("cascade-templates")
 			.setDisabled(true));
 		return;
 	}
@@ -56,18 +57,23 @@ function addFolderTemplateMenuItem(plugin: Plugin, menu: Menu, folder: TFolder):
 	// an ancestor, so the new template extends the cascade instead of starting
 	// a new root.
 	const parent = getTemplateOfFolder(folder);
+	/*
 	const title = parent
 		? `New child template (${templateName})`
 		: `New root template (${templateName})`;
+	*/
+	const title = parent
+		? `New child cascade template`
+		: `New root cascade template`;
 
 	menu.addItem(item => item
 		.setTitle(title)
 		.setIcon("file-plus")
-		.setSection("action")
+		// .setSection("cascade-templates")
 		.onClick(() => {
 			void createFolderTemplate(plugin, folder).catch(error => {
 				console.error("[cascade-templates] Could not create the folder template", error);
-				new Notice(`Cascade Templates: could not create ${templateName}.`);
+				new Notice(`Cascade Templates: could not create template at ${path}.`);
 			});
 		}));
 }
