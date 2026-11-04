@@ -319,16 +319,16 @@
     }
 
     /* AI: the folder menu is the mouse-only path to the template, so it exists
-       on desktop too; like the row verbs it stays invisible until the row is
-       pointed at. Touch devices always show it. */
+       on desktop too. It stays invisible unless the row is pointed at: keyboard
+       focus alone does not reveal it, because Enter already opens the menu.
+       Touch devices always show it. */
     @media (hover: hover) {
         & .ct-folder-more {
             opacity: 0;
             transition: opacity 0.12s ease-in-out;
         }
 
-        & .ct-tree-row:hover .ct-folder-more,
-        & .ct-tree-row:focus-within .ct-folder-more {
+        & .ct-tree-row:hover .ct-folder-more {
             opacity: 1;
         }
     }
