@@ -693,15 +693,14 @@ export class CascadeDashboardModal extends Modal {
 		el.classList.toggle("is-context", row.context);
 		el.classList.toggle("is-busy", this.busy);
 
+		// The chevron is only a state indicator: the whole row is the expand
+		// target, so the tiny arrow never has to be hit precisely (and touch
+		// devices get a card-sized surface). `aria-expanded` on the row carries
+		// the semantics for assistive tech.
 		const toggle = createDiv({ cls: "ct-tree-toggle" });
 		if (row.hasChildren) {
 			setIconSafe(toggle, row.expanded ? "chevron-down" : "chevron-right");
-			toggle.setAttribute("role", "button");
-			toggle.setAttribute("aria-label", row.expanded ? "Collapse" : "Expand");
-			toggle.addEventListener("click", event => {
-				event.stopPropagation();
-				this.toggleRow(row);
-			});
+			toggle.setAttribute("aria-hidden", "true");
 		} else {
 			toggle.classList.add("is-empty");
 		}
@@ -764,6 +763,9 @@ export class CascadeDashboardModal extends Modal {
 				element.setAttribute("tabindex", id === row.id ? "0" : "-1");
 			}
 			el.focus({ preventScroll: true });
+			// The whole card expands/collapses a folder. Buttons and links inside
+			// the row stop propagation, so they never reach this handler.
+			if (row.hasChildren) this.toggleRow(row);
 		});
 
 		return el;

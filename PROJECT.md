@@ -199,10 +199,13 @@ Dettagli:
 - Le scritture della dashboard sono scritture esterne per il pannello: chiudono
   la sessione Back della nota, che resta invece locale alla nota e indipendente
   dal journal. Nessuna pressione del pannello compare nella History.
-- Mobilità e tastiera: le azioni delle righe hanno il menu `⋯` come fallback,
-  l'albero usa il pattern ARIA con roving tabindex, `Enter` apre il menu e
-  `Esc` chiude il modal (bloccato durante batch e rewind). L'indicizzazione
-  mostra `Waiting for indexing…` solo quando serve, con timeout di sicurezza.
+- Mobilità e tastiera: l'intera card di una cartella è il bersaglio di
+  espansione (la freccina è solo indicatore di stato, non un bottone separato);
+  le azioni interne fermano la propagazione e non collassano la riga. Le azioni
+  delle righe hanno il menu `⋯` come fallback, l'albero usa il pattern ARIA con
+  roving tabindex, `Enter` apre il menu e `Esc` chiude il modal (bloccato durante
+  batch e rewind). L'indicizzazione mostra `Waiting for indexing…` solo quando
+  serve, con timeout di sicurezza.
 
 
 ## 13. Vincoli di design

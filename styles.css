@@ -131,6 +131,11 @@
         background: var(--background-modifier-hover);
     }
 
+    /* AI: the row itself is the expand target, so it advertises the click. */
+    & .ct-tree-row[data-has-children="true"] {
+        cursor: var(--cursor);
+    }
+
     & .ct-tree-row:focus-visible {
         box-shadow: 0 0 0 2px var(--background-modifier-border-focus);
     }
@@ -149,11 +154,6 @@
         flex: none;
         color: var(--text-faint);
         border-radius: var(--radius-s);
-    }
-
-    & .ct-tree-toggle:not(.is-empty):hover {
-        color: var(--text-normal);
-        background: var(--background-modifier-hover);
     }
 
     & .ct-tree-toggle.is-empty {
