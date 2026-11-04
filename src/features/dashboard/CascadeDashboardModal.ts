@@ -720,6 +720,7 @@ export class CascadeDashboardModal extends Modal {
 		}
 		el.append(name);
 
+		/*
 		if (row.kind === "folder" && row.folder?.localRoot && row.folder.referencePath) {
 			el.createSpan({ cls: "ct-row-ref", text: `→ ${row.folder.referencePath}` });
 		}
@@ -731,6 +732,7 @@ export class CascadeDashboardModal extends Modal {
 				el.title = reference;
 			}
 		}
+		*/
 
 		if (row.folder && row.kind !== "notes" && !row.context) {
 			el.append(this.createCounts(row.folder.counts, row.folder.state));
@@ -1744,12 +1746,14 @@ function folderLabel(folder: ForestFolderNode): string {
 	return folder.path === "" ? "Vault root" : folder.path;
 }
 
+/*
 function referenceLabel(node: ForestFileNode): string | null {
 	if (!node.referencePath) return null;
 	return node.kind === "template"
 		? `parent: ${node.referencePath}`
 		: `template: ${node.referencePath}`;
 }
+*/
 
 function primaryVerb(node: ForestFileNode): VerbConfig | null {
 	if (node.kind === "template" && node.state === "missing") {
