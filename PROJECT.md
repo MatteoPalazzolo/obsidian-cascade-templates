@@ -159,12 +159,14 @@ Dettagli:
   ribbon (`git-fork`) e dal comando `Open cascade dashboard`. Non aggiunge
   controlli alla UI della nota: il pannello Properties resta invariato.
 - `Cascade` è una mappa **sola lettura** derivata dalle cartelle: per ogni local
-  root mostra le sottocartelle, il template locale e le note raggruppate
-  (`N notes`), con badge aggregato e conteggi `T` / `Nm` / `Ne` dello scope
-  d'azione. Un template annidato vive dentro la cascata del suo antenato; solo
-  un template senza template antenati è una local root. Le note fuori da ogni
-  cascata sono contate a parte, quelle senza frontmatter restano righe attenuate
-  senza badge.
+  root mostra le sottocartelle e le note raggruppate (`N notes`), con badge
+  aggregato e conteggi `T` / `Nm` / `Ne` dello scope d'azione. La riga cartella
+  **è** la riga del suo template: il badge ne riassume lo stato, il nome è un
+  link che apre il template (come il nome di una nota apre la nota) e il resto
+  della card espande/collassa. Non esiste una riga separata per il template. Un
+  template annidato vive dentro la cascata del suo antenato; solo un template
+  senza template antenati è una local root. Le note fuori da ogni cascata sono
+  contate a parte, quelle senza frontmatter restano righe attenuate senza badge.
 - **Solo le cartelle con un template sono nodi**: una cartella senza template
   (anche una catena di cartelle senza template) non compare nell'albero, le sue
   note risalgono alla cartella-template più vicina. L'etichetta di una cartella
@@ -188,7 +190,9 @@ Dettagli:
 - `Issues (N)` è un **unico albero** con i soli rami che portano a un problema:
   template da aggiornare, note con chiavi mancanti e note con chiavi extra
   convivono nello stesso contesto, senza ripetere tre volte gli stessi antenati.
-  Ogni riga cartella porta i tre verbi bulk sul proprio sottoalbero
+  Il template non ha una riga propria: la cartella che lo contiene appare anche
+  quando l'unico problema è il template, e il suo verbo `Update templates` lo
+  copre. Ogni riga cartella porta i tre verbi bulk sul proprio sottoalbero
   (`Update templates`, `Update notes`, `Align notes`), con il menu `⋯` su mobile; le righe file
   portano il verbo singolo. `N` è lo stesso numero di `Fix all (N)`.
 - Verbi: `Update template(s)` e `Update note(s)` sempre disponibili; `Align

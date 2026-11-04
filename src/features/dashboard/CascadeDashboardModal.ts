@@ -59,7 +59,7 @@ type TabId = "cascade" | "issues" | "history";
 
 interface RowModel {
 	id: string;
-	kind: "folder" | "notes" | "note" | "template";
+	kind: "folder" | "notes" | "note";
 	level: number;
 	parentId: string | null;
 	hasChildren: boolean;
@@ -483,7 +483,9 @@ export class CascadeDashboardModal extends Modal {
 		const rows: RowModel[] = [];
 		const pushFolder = (folder: ForestFolderNode, level: number, parentId: string | null): void => {
 			const folderId = `f:${folder.path}`;
-			const hasChildren = folder.folders.length > 0 || folder.template !== null || folder.notes.length > 0;
+			// A folder row is also the template row, so it only expands when it has
+			// child folders or notes below it.
+			const hasChildren = folder.folders.length > 0 || folder.notes.length > 0;
 			const expanded = this.expanded.has(folderId);
 			rows.push({
 				id: folderId,
@@ -500,10 +502,6 @@ export class CascadeDashboardModal extends Modal {
 			if (!expanded) return;
 
 			for (const child of folder.folders) pushFolder(child, level + 1, folderId);
-
-			if (folder.template) {
-				rows.push(this.fileRow(folder.template, level + 1, folderId, false));
-			}
 
 			if (folder.notes.length > 0) {
 				const groupId = `g:${folder.path}`;
@@ -536,8 +534,8 @@ export class CascadeDashboardModal extends Modal {
 
 	private fileRow(node: ForestFileNode, level: number, parentId: string, context: boolean): RowModel {
 		return {
-			id: `${node.kind === "template" ? "t" : "n"}:${node.path}`,
-			kind: node.kind,
+			id: `n:${node.path}`,
+			kind: "note",
 			level,
 			parentId,
 			hasChildren: false,
@@ -613,12 +611,16 @@ export class CascadeDashboardModal extends Modal {
 
 			const folderId = `f:${folder.path}`;
 			const expanded = this.expanded.has(folderId);
+			// Only relevant content expands; the folder template has no row of its
+			// own and is fixed by the folder bulk verb.
+			const hasChildren = folder.notes.some(note => matching.has(note.path))
+				|| folder.folders.some(child => folderRelevant(child));
 			rows.push({
 				id: folderId,
 				kind: "folder",
 				level,
 				parentId,
-				hasChildren: true,
+				hasChildren,
 				expanded,
 				label: folderRowLabel(folder),
 				folder,
@@ -628,10 +630,6 @@ export class CascadeDashboardModal extends Modal {
 			if (!expanded) return;
 
 			for (const child of folder.folders) pushFolder(child, level + 1, folderId);
-
-			if (folder.template && matching.has(folder.template.path)) {
-				rows.push(this.fileRow(folder.template, level + 1, folderId, false));
-			}
 
 			const notes = folder.notes.filter(note => matching.has(note.path));
 			if (notes.length > 0) {
@@ -729,6 +727,16 @@ export class CascadeDashboardModal extends Modal {
 				event.stopPropagation();
 				void this.openPath(row.node?.path);
 			});
+		} else if (row.kind === "folder" && row.folder?.template) {
+			// A folder row is also its template row: the label is the link, exactly
+			// like a note name. The rest of the card keeps toggling the expansion.
+			const templatePath = row.folder.template.path;
+			name.addClass("is-link");
+			name.title = `Open template: ${templatePath}`;
+			name.addEventListener("click", event => {
+				event.stopPropagation();
+				void this.openPath(templatePath);
+			});
 		} else if (row.folder) {
 			name.title = row.folder.path === "" ? "/" : row.folder.path;
 		}
@@ -774,9 +782,10 @@ export class CascadeDashboardModal extends Modal {
 	}
 
 	private rowIcon(row: RowModel): string {
-		if (row.kind === "folder") return row.expanded ? "folder-open" : "folder";
+		// A folder row represents its template, not a folder: the icon stays
+		// constant and the chevron is the only expansion signal.
+		if (row.kind === "folder") return "file";
 		if (row.kind === "notes") return "files";
-		if (row.kind === "template") return "file";
 		return "file-text";
 	}
 
@@ -958,6 +967,16 @@ export class CascadeDashboardModal extends Modal {
 
 	private openFolderMenu(folder: ForestFolderNode, event: Event, anchor?: HTMLElement): void {
 		const menu = new Menu();
+
+		if (folder.template) {
+			const templatePath = folder.template.path;
+			menu.addItem(item => item
+				.setTitle(`Open template (${folder.template?.name ?? templatePath})`)
+				.setIcon("file")
+				.onClick(() => void this.openPath(templatePath)));
+			menu.addSeparator();
+		}
+
 		for (const verb of this.folderVerbs(folder)) {
 			const disabled = verb.nodes.length === 0;
 			menu.addItem(item => item
@@ -1759,9 +1778,6 @@ function folderRowLabel(folder: ForestFolderNode): string {
 }
 
 function primaryVerb(node: ForestFileNode): VerbConfig | null {
-	if (node.kind === "template" && node.state === "missing") {
-		return { mode: "add-missing", label: "Update", fullLabel: "Update template", icon: "wrench" };
-	}
 	if (node.kind === "note" && node.state === "missing") {
 		return { mode: "add-missing", label: "Update", fullLabel: "Update note", icon: "wrench" };
 	}
