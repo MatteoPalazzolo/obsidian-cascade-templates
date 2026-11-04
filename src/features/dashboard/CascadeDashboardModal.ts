@@ -525,26 +525,28 @@ export class CascadeDashboardModal extends Modal {
 				}
 
 				const groupId = `g:${folder.path}`;
-				const groupExpanded = this.expanded.has(groupId);
+				// The group row is the collapsed state only: once expanded it makes
+				// room for the notes themselves. Closing the folder recompacts it,
+				// which is the only way back to the group.
+				if (this.expanded.has(groupId)) {
+					for (const note of folder.notes) {
+						rows.push(this.fileRow(note, level + 1, folderId, note.state === "none"));
+					}
+					return;
+				}
+
 				rows.push({
 					id: groupId,
 					kind: "notes",
 					level: level + 1,
 					parentId: folderId,
 					hasChildren: true,
-					expanded: groupExpanded,
+					expanded: false,
 					label: `${folder.notes.length} note${folder.notes.length === 1 ? "" : "s"}`,
 					folder,
 					noteCount: folder.notes.length,
 					context: false,
 				});
-				if (groupExpanded) {
-					for (const note of folder.notes) {
-						// Same indentation as the group label: the group is only a
-						// compaction of the notes below, not a tree node of its own.
-						rows.push(this.fileRow(note, level + 1, groupId, note.state === "none"));
-					}
-				}
 			}
 		};
 
@@ -667,25 +669,26 @@ export class CascadeDashboardModal extends Modal {
 				}
 
 				const groupId = `g:${folder.path}`;
-				const groupExpanded = this.expanded.has(groupId);
+				// Expanded groups leave the room to the notes, as in the map.
+				if (this.expanded.has(groupId)) {
+					for (const note of notes) {
+						rows.push(this.fileRow(note, level + 1, folderId, false));
+					}
+					return;
+				}
+
 				rows.push({
 					id: groupId,
 					kind: "notes",
 					level: level + 1,
 					parentId: folderId,
 					hasChildren: true,
-					expanded: groupExpanded,
+					expanded: false,
 					label: `${notes.length} note${notes.length === 1 ? "" : "s"}`,
 					folder,
 					noteCount: notes.length,
 					context: true,
 				});
-				if (groupExpanded) {
-					for (const note of notes) {
-						// Same indentation as the group label, see buildCascadeRows.
-						rows.push(this.fileRow(note, level + 1, groupId, false));
-					}
-				}
 			}
 		};
 
@@ -715,7 +718,7 @@ export class CascadeDashboardModal extends Modal {
 			tree.append(el);
 		}
 
-		this.wireTree(tree, rows);
+		this.wireTree(tree, rows, interactive);
 		parent.append(tree);
 	}
 
@@ -761,12 +764,12 @@ export class CascadeDashboardModal extends Modal {
 				void this.openPath(row.node?.path);
 			});
 		} else if (row.kind === "folder" && row.folder?.template) {
-			// A folder row is also its template row: the label is the link, exactly
-			// like a note name. The rest of the card keeps toggling the expansion.
+			// Opening the template is a deliberate gesture: a plain click belongs
+			// to the row (expand/collapse), Ctrl/Cmd+click navigates.
 			const templatePath = row.folder.template.path;
-			name.addClass("is-link");
-			name.title = `Open template: ${templatePath}`;
+			name.title = `Ctrl/Cmd+click to open ${templatePath}`;
 			name.addEventListener("click", event => {
+				if (!event.ctrlKey && !event.metaKey) return;
 				event.stopPropagation();
 				void this.openPath(templatePath);
 			});
@@ -795,9 +798,11 @@ export class CascadeDashboardModal extends Modal {
 			el.append(this.createRowActions(row.node));
 		}
 
-		if (interactive && row.kind === "folder" && row.folder) {
-			el.classList.add("has-folder-actions");
-			el.append(this.createFolderActions(row.folder));
+		if (row.kind === "folder" && row.folder?.template) {
+			// The card takes a second line only when the bulk verbs are there; the
+			// menu alone stays on the row.
+			if (interactive) el.classList.add("has-folder-actions");
+			el.append(this.createFolderActions(row.folder, interactive));
 		}
 
 		el.addEventListener("click", () => {
@@ -879,40 +884,42 @@ export class CascadeDashboardModal extends Modal {
 		more.setAttribute("aria-label", "More actions");
 		more.addEventListener("click", event => {
 			event.stopPropagation();
-			this.openRowMenu(node, event);
+			this.openRowMenu(node, event, undefined, true);
 		});
 		container.append(more);
 		return container;
 	}
 
-	private createFolderActions(folder: ForestFolderNode): HTMLElement {
+	private createFolderActions(folder: ForestFolderNode, interactive: boolean): HTMLElement {
 		const container = createDiv({ cls: "ct-folder-actions" });
 
-		for (const verb of this.folderVerbs(folder)) {
-			const disabled = verb.nodes.length === 0;
-			const action = createDiv({ cls: "ct-folder-action text-icon-button" });
-			action.setAttribute("role", "button");
-			action.setAttribute("tabindex", "-1");
-			action.setAttribute("aria-disabled", String(disabled || verb.blocked || this.busy));
-			action.classList.toggle("is-blocked", verb.blocked);
-			action.classList.toggle("is-disabled", disabled || this.busy);
-			const icon = createSpan({ cls: "text-button-icon" });
-			setIconSafe(icon, verb.icon);
-			const label = createSpan({ cls: "text-button-label", text: verb.fullLabel });
-			action.append(icon, label);
-			action.title = verb.blocked
-				? "Align is locked: update the template chain first"
-				: `${verb.fullLabel} in this folder and below (${verb.nodes.length})`;
-			action.addEventListener("click", event => {
-				event.stopPropagation();
-				if (disabled || verb.blocked || this.busy) return;
-				void this.runVerb(verb.nodes, verb.mode, verb.fullLabel, true);
-			});
-			container.append(action);
+		if (interactive) {
+			for (const verb of this.folderVerbs(folder)) {
+				const disabled = verb.nodes.length === 0;
+				const action = createDiv({ cls: "ct-folder-action text-icon-button" });
+				action.setAttribute("role", "button");
+				action.setAttribute("tabindex", "-1");
+				action.setAttribute("aria-disabled", String(disabled || verb.blocked || this.busy));
+				action.classList.toggle("is-blocked", verb.blocked);
+				action.classList.toggle("is-disabled", disabled || this.busy);
+				const icon = createSpan({ cls: "text-button-icon" });
+				setIconSafe(icon, verb.icon);
+				const label = createSpan({ cls: "text-button-label", text: verb.fullLabel });
+				action.append(icon, label);
+				action.title = verb.blocked
+					? "Align is locked: update the template chain first"
+					: `${verb.fullLabel} in this folder and below (${verb.nodes.length})`;
+				action.addEventListener("click", event => {
+					event.stopPropagation();
+					if (disabled || verb.blocked || this.busy) return;
+					void this.runVerb(verb.nodes, verb.mode, verb.fullLabel, true);
+				});
+				container.append(action);
+			}
 		}
 
-		// Mobile: the three verbs do not fit next to the counts, so they move
-		// into the row menu. CSS swaps the two presentations.
+		// The menu is the mouse-only way to reach the template (and, on phones,
+		// the bulk verbs). It exists in every tab, including the read-only map.
 		const more = createDiv({ cls: "ct-folder-more clickable-icon" });
 		setIconSafe(more, "more-horizontal");
 		more.setAttribute("role", "button");
@@ -920,7 +927,7 @@ export class CascadeDashboardModal extends Modal {
 		more.setAttribute("aria-label", "Folder actions");
 		more.addEventListener("click", event => {
 			event.stopPropagation();
-			this.openFolderMenu(folder, event);
+			this.openFolderMenu(folder, event, undefined, interactive);
 		});
 		container.append(more);
 
@@ -998,7 +1005,12 @@ export class CascadeDashboardModal extends Modal {
 		return result;
 	}
 
-	private openFolderMenu(folder: ForestFolderNode, event: Event, anchor?: HTMLElement): void {
+	private openFolderMenu(
+		folder: ForestFolderNode,
+		event: Event,
+		anchor: HTMLElement | undefined,
+		withVerbs: boolean
+	): void {
 		const menu = new Menu();
 
 		if (folder.template) {
@@ -1007,7 +1019,12 @@ export class CascadeDashboardModal extends Modal {
 				.setTitle(`Open template (${folder.template?.name ?? templatePath})`)
 				.setIcon("file")
 				.onClick(() => void this.openPath(templatePath)));
-			menu.addSeparator();
+			if (withVerbs) menu.addSeparator();
+		}
+
+		if (!withVerbs) {
+			this.showMenu(menu, event, anchor);
+			return;
 		}
 
 		for (const verb of this.folderVerbs(folder)) {
@@ -1039,17 +1056,34 @@ export class CascadeDashboardModal extends Modal {
 
 	private toggleRow(row: RowModel): void {
 		if (!row.hasChildren) return;
-		if (this.expanded.has(row.id)) {
+		const collapsing = this.expanded.has(row.id);
+		const expandingGroup = row.kind === "notes" && !collapsing;
+
+		if (collapsing) {
 			this.expanded.delete(row.id);
+			// Closing a folder compacts everything nested in it, so reopening it
+			// starts from folders and note groups collapsed.
+			if (row.kind === "folder" && row.folder) this.recompact(row.folder);
 		} else {
 			this.expanded.add(row.id);
 		}
-		this.activeRowId = row.id;
-		this.pendingFocusId = row.id;
+
+		// Expanding a notes group deletes its row, so focus moves to the folder
+		// instead of leaving the tree without an active item.
+		const focusId = expandingGroup && row.folder ? `f:${row.folder.path}` : row.id;
+		this.activeRowId = focusId;
+		this.pendingFocusId = focusId;
 		this.render();
 	}
 
-	private wireTree(tree: HTMLElement, rows: RowModel[]): void {
+	/** AI: Clears the expansion state of a folder and of everything below it. */
+	private recompact(folder: ForestFolderNode): void {
+		this.expanded.delete(`f:${folder.path}`);
+		this.expanded.delete(`g:${folder.path}`);
+		for (const child of folder.folders) this.recompact(child);
+	}
+
+	private wireTree(tree: HTMLElement, rows: RowModel[], interactive: boolean): void {
 		const visible = (): HTMLElement[] => rows
 			.map(row => this.rowElements.get(row.id))
 			.filter((element): element is HTMLElement => element !== undefined);
@@ -1114,9 +1148,9 @@ export class CascadeDashboardModal extends Modal {
 				case "Enter":
 					event.preventDefault();
 					if (currentRow.node) {
-						this.openRowMenu(currentRow.node, event, current);
+						this.openRowMenu(currentRow.node, event, current, interactive);
 					} else if (currentRow.kind === "folder" && currentRow.folder) {
-						this.openFolderMenu(currentRow.folder, event, current);
+						this.openFolderMenu(currentRow.folder, event, current, interactive);
 					}
 					break;
 				case " ":
@@ -1129,7 +1163,12 @@ export class CascadeDashboardModal extends Modal {
 		});
 	}
 
-	private openRowMenu(node: ForestFileNode, event: Event, anchor?: HTMLElement): void {
+	private openRowMenu(
+		node: ForestFileNode,
+		event: Event,
+		anchor: HTMLElement | undefined,
+		withVerb: boolean
+	): void {
 		const menu = new Menu();
 		menu.addItem(item => item
 			.setTitle("Open file")
@@ -1138,7 +1177,7 @@ export class CascadeDashboardModal extends Modal {
 			.onClick(() => void this.openPath(node.path)));
 
 		const verb = primaryVerb(node);
-		if (verb) {
+		if (withVerb && verb) {
 			const blocked = !node.chainSound && verb.mode === "remove-extra";
 			menu.addItem(item => item
 				.setTitle(blocked ? `${verb.fullLabel} (chain not sound)` : verb.fullLabel)

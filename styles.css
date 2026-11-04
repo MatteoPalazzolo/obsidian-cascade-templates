@@ -310,12 +310,27 @@
     }
 
     & .ct-folder-more {
-        display: none;
+        display: inline-flex;
         color: var(--text-faint);
     }
 
     & .ct-folder-more:hover {
         color: var(--text-normal);
+    }
+
+    /* AI: the folder menu is the mouse-only path to the template, so it exists
+       on desktop too; like the row verbs it stays invisible until the row is
+       pointed at. Touch devices always show it. */
+    @media (hover: hover) {
+        & .ct-folder-more {
+            opacity: 0;
+            transition: opacity 0.12s ease-in-out;
+        }
+
+        & .ct-tree-row:hover .ct-folder-more,
+        & .ct-tree-row:focus-within .ct-folder-more {
+            opacity: 1;
+        }
     }
 
     body.is-phone & .ct-folder-actions .ct-folder-action {
@@ -324,10 +339,6 @@
 
     body.is-phone & .ct-row-actions .ct-row-action {
         display: none;
-    }
-
-    body.is-phone & .ct-folder-more {
-        display: inline-flex;
     }
 
     /* AI: desktop gives the three verbs their own line under the folder info,

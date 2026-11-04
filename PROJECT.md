@@ -161,12 +161,15 @@ Dettagli:
 - `Cascade` è una mappa **sola lettura** derivata dalle cartelle: per ogni local
   root mostra le sottocartelle e le note raggruppate (`N notes`), con badge
   aggregato e conteggi `T` / `Nm` / `Ne` dello scope d'azione. La riga cartella
-  **è** la riga del suo template: il badge ne riassume lo stato, il nome è un
-  link che apre il template (come il nome di una nota apre la nota) e il resto
-  della card espande/collassa. Non esiste una riga separata per il template. Un
-  template annidato vive dentro la cascata del suo antenato; solo un template
-  senza template antenati è una local root. Le note fuori da ogni cascata sono
-  contate a parte, quelle senza frontmatter restano righe attenuate senza badge.
+  **è** la riga del suo template: il badge ne riassume lo stato e non esiste una
+  riga separata per il template. Il click semplice sul nome espande/collassa;
+  `Ctrl`/`Cmd`+click apre il template; il menu `⋯` della riga offre sempre
+  `Open template` (visibile all'hover su desktop, sempre su mobile e raggiungibile
+  con `Enter` da tastiera), così il template si apre anche solo col mouse senza
+  rischiare click accidentali. Un template annidato vive dentro la cascata del
+  suo antenato; solo un template senza template antenati è una local root. Le
+  note fuori da ogni cascata sono contate a parte, quelle senza frontmatter
+  restano righe attenuate senza badge.
 - **Solo le cartelle con un template sono nodi**: una cartella senza template
   (anche una catena di cartelle senza template) non compare nell'albero, le sue
   note risalgono alla cartella-template più vicina. L'etichetta di una cartella
@@ -179,8 +182,10 @@ Dettagli:
   mostrano anche sottocartelle-template e solo **oltre 3 note** (`> 3`, costante
   `NOTES_GROUP_THRESHOLD` in `CascadeDashboardModal.ts`). Con 1–3 note, e in ogni
   cartella leaf, le note sono righe dirette sotto la cartella: chiuderla basta a
-  nasconderle. Le note del gruppo hanno la stessa indentazione dell'etichetta,
-  così non sembrano un livello dell'albero; restano righe cliccabili con i verbi.
+  nasconderle. Quando il gruppo viene espanso la sua riga sparisce e restano le
+  note, con la stessa indentazione; per ricompattare si chiude la cartella, e la
+  chiusura riporta allo stato compatto anche tutte le cartelle e i gruppi
+  discendenti.
 - **Regola `ok`**: `ok` significa *stesso insieme di chiavi*, non stessi valori
   (`computeMapConformance`). Un template è `missing` solo se gli mancano chiavi
   del parent; le sue chiavi extra sono specializzazione attesa.
