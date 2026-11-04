@@ -99,9 +99,10 @@ const TAB_LABELS: Record<TabId, string> = {
 };
 
 /**
- * AI: Notes are folded into an `N notes` group only when the folder lists more
- * than this many notes. At or below the threshold they are listed directly, and
- * a leaf folder never uses the group: collapsing the folder already hides them.
+ * AI: Notes are folded into an `N notes` group only in the Cascade map, and only
+ * when the folder lists more than this many notes. At or below the threshold
+ * they are listed directly, and a leaf folder never uses the group: collapsing
+ * the folder already hides them. Issues never groups its notes.
  */
 const NOTES_GROUP_THRESHOLD = 3;
 
@@ -600,11 +601,11 @@ export class CascadeDashboardModal extends Modal {
 
 		// Folders without a template are flattened, so the physical trail of a
 		// note no longer maps to rows. Expand from the node's cascade folder up.
+		// Issues has no note groups, so `g:` ids are never involved here.
 		for (const node of nodes) {
 			let scope = node.scopeFolder;
 			while (scope !== null) {
 				this.expanded.add(`f:${scope}`);
-				this.expanded.add(`g:${scope}`);
 				scope = forest.folders.get(scope)?.parentPath ?? null;
 			}
 		}
@@ -654,41 +655,11 @@ export class CascadeDashboardModal extends Modal {
 			for (const child of folder.folders) pushFolder(child, level + 1, folderId);
 
 			const notes = folder.notes.filter(note => matching.has(note.path));
-			if (notes.length > 0) {
-				// The group separates notes from the child folder rows. When no child
-				// row is visible (leaf in this view) or the count is small, the notes
-				// are listed directly under their folder.
-				const grouped = folder.folders.some(child => folderRelevant(child))
-					&& notes.length > NOTES_GROUP_THRESHOLD;
-
-				if (!grouped) {
-					for (const note of notes) {
-						rows.push(this.fileRow(note, level + 1, folderId, false));
-					}
-					return;
-				}
-
-				const groupId = `g:${folder.path}`;
-				// Expanded groups leave the room to the notes, as in the map.
-				if (this.expanded.has(groupId)) {
-					for (const note of notes) {
-						rows.push(this.fileRow(note, level + 1, folderId, false));
-					}
-					return;
-				}
-
-				rows.push({
-					id: groupId,
-					kind: "notes",
-					level: level + 1,
-					parentId: folderId,
-					hasChildren: true,
-					expanded: false,
-					label: `${notes.length} note${notes.length === 1 ? "" : "s"}`,
-					folder,
-					noteCount: notes.length,
-					context: true,
-				});
+			// Issues is a local analysis, not an overview: every matching note is
+			// a row of its own, directly under its folder. There is no `N notes`
+			// group to expand and nothing to recompact.
+			for (const note of notes) {
+				rows.push(this.fileRow(note, level + 1, folderId, false));
 			}
 		};
 
@@ -1061,9 +1032,12 @@ export class CascadeDashboardModal extends Modal {
 
 		if (collapsing) {
 			this.expanded.delete(row.id);
-			// Closing a folder compacts everything nested in it, so reopening it
-			// starts from folders and note groups collapsed.
-			if (row.kind === "folder" && row.folder) this.recompact(row.folder);
+			// Only the map groups notes, and closing a folder restores every
+			// `N notes` group below it. Nested folders stay as they were, and
+			// Issues (notes always listed) has nothing to reset.
+			if (row.kind === "folder" && row.folder && this.tab === "cascade") {
+				this.resetNoteGroups(row.folder);
+			}
 		} else {
 			this.expanded.add(row.id);
 		}
@@ -1076,11 +1050,10 @@ export class CascadeDashboardModal extends Modal {
 		this.render();
 	}
 
-	/** AI: Clears the expansion state of a folder and of everything below it. */
-	private recompact(folder: ForestFolderNode): void {
-		this.expanded.delete(`f:${folder.path}`);
+	/** AI: Collapses every `N notes` group of a folder and of its descendants. */
+	private resetNoteGroups(folder: ForestFolderNode): void {
 		this.expanded.delete(`g:${folder.path}`);
-		for (const child of folder.folders) this.recompact(child);
+		for (const child of folder.folders) this.resetNoteGroups(child);
 	}
 
 	private wireTree(tree: HTMLElement, rows: RowModel[], interactive: boolean): void {

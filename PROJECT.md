@@ -178,14 +178,18 @@ Dettagli:
   percorso completo nel tooltip. Anche le note mostrano il percorso completo nel
   tooltip, perché due `index.md` di sottocartelle diverse possono convivere
   nello stesso gruppo.
-- Il gruppo `N notes` è solo una compattazione: compare solo nelle cartelle che
-  mostrano anche sottocartelle-template e solo **oltre 3 note** (`> 3`, costante
-  `NOTES_GROUP_THRESHOLD` in `CascadeDashboardModal.ts`). Con 1–3 note, e in ogni
-  cartella leaf, le note sono righe dirette sotto la cartella: chiuderla basta a
-  nasconderle. Quando il gruppo viene espanso la sua riga sparisce e restano le
-  note, con la stessa indentazione; per ricompattare si chiude la cartella, e la
-  chiusura riporta allo stato compatto anche tutte le cartelle e i gruppi
-  discendenti.
+- Il gruppo `N notes` è solo una compattazione e vive **solo nella mappa**:
+  compare solo nelle cartelle che mostrano anche sottocartelle-template e solo
+  **oltre 3 note** (`> 3`, costante `NOTES_GROUP_THRESHOLD` in
+  `CascadeDashboardModal.ts`). Con 1–3 note, e in ogni cartella leaf, le note
+  sono righe dirette sotto la cartella: chiuderla basta a nasconderle. Quando il
+  gruppo viene espanso la sua riga sparisce e restano le note, con la stessa
+  indentazione; per ricompattare si chiude la cartella, e la chiusura ripristina
+  tutti i gruppi `N notes` discendenti senza chiudere le sottocartelle annidate.
+- **Issues non compatta**: è un'analisi locale di ciò che non va, non una vista
+  d'insieme, quindi le note con problemi sono sempre righe dirette sotto la loro
+  cartella, senza gruppo `N notes`. Chiudere una cartella lì è solo un gesto
+  visivo: non resetta alcun gruppo e non chiude le cartelle annidate.
 - **Regola `ok`**: `ok` significa *stesso insieme di chiavi*, non stessi valori
   (`computeMapConformance`). Un template è `missing` solo se gli mancano chiavi
   del parent; le sue chiavi extra sono specializzazione attesa.
