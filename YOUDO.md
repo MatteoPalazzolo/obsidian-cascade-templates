@@ -8,7 +8,8 @@ Formato: `- [ ] <controllo> — <come/dove eseguirlo> (origine: <file:riga>)`.
 
 ---
 
-- [ ] Dashboard, tabs off (default): no tabs, no header actions, read-only tree with local roots, reference paths, note groups and the outside-cascade footer — open the ribbon or the command palette (origine: `src/features/dashboard/CascadeDashboardModal.ts`).
+- [ ] Dashboard, tabs off (default): no tabs, no header actions, read-only tree with local roots, template folders, note groups and the outside-cascade footer; folders without a template are flattened (their notes appear in the nearest template folder), and the tooltip shows the full path — open the ribbon or the command palette (origine: `src/features/dashboard/CascadeDashboardModal.ts`).
+- [ ] Dashboard tree: notes under a `N notes` group share the group's indentation (they must not look like a nested tree level) while staying clickable and actionable — expand a folder with notes (origine: `styles.css`).
 - [ ] Dashboard, tabs on: `Issues` and `History` counters, disabled tabs at 0, empty state in place, `Fix all` count equal to `Issues` — Settings → Cascade Templates → “Issues and History tabs (experimental)” (origine: `src/settings.ts`).
 - [ ] Issues: one tree for all issue kinds; each folder row shows `Update templates` / `Update notes` / `Align notes` bulk verbs, on mobile only the `⋯` menu; single-file rows keep their verb; `Align` shows the chain-not-sound reason until templates are updated — create a template missing a parent key, a note missing a key and a note with an extra key in different subfolders (origine: `src/features/dashboard/CascadeDashboardModal.ts`).
 - [ ] History: undo, confirmation with counts/diff, Fix all group with surviving phases, missing-file warning, truncated-history line and error card on a failed rewind — run a small batch, then change a touched key by hand before undoing (origine: `src/core/journal.ts`).

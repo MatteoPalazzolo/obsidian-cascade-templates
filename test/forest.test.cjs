@@ -118,6 +118,65 @@ test("forest: folders put child folders, then the template, then the notes", () 
     ]);
 });
 
+test("forest: folders without a template are flattened recursively", () => {
+    const forest = buildForest({
+        files: [
+            { path: "projects/!Template.md", props: map([["a", 1]]) },
+            { path: "projects/alpha/!Template.md", props: map([["a", 1]]) },
+            { path: "projects/alpha/skip/note.md", props: map([["a", 1]]) },
+            { path: "projects/alpha/skip/more/note-2.md", props: map([["a", 1]]) },
+            { path: "projects/alpha/skip/more/deep/!Template.md", props: map([["a", 1]]) },
+            { path: "projects/alpha/skip/more/deep/note-3.md", props: map([["a", 1]]) },
+        ],
+        templateFilename: TEMPLATE,
+    });
+
+    assert.deepEqual([...forest.folders.keys()].sort(), [
+        "projects",
+        "projects/alpha",
+        "projects/alpha/skip/more/deep",
+    ]);
+
+    const alpha = forest.folders.get("projects/alpha");
+    assert.deepEqual(alpha.folders.map(folder => folder.path), [
+        "projects/alpha/skip/more/deep",
+    ]);
+    assert.deepEqual(alpha.notes.map(note => note.path), [
+        "projects/alpha/skip/more/note-2.md",
+        "projects/alpha/skip/note.md",
+    ]);
+    assert.deepEqual(alpha.counts, { templates: 0, notesMissing: 0, notesExtra: 0 });
+
+    const deep = forest.folders.get("projects/alpha/skip/more/deep");
+    assert.equal(deep.parentPath, "projects/alpha");
+    assert.deepEqual(deep.notes.map(note => note.path), [
+        "projects/alpha/skip/more/deep/note-3.md",
+    ]);
+
+    assert.equal(forest.nodes.get("projects/alpha/skip/note.md").scopeFolder, "projects/alpha");
+    assert.equal(
+        forest.nodes.get("projects/alpha/skip/more/deep/note-3.md").scopeFolder,
+        "projects/alpha/skip/more/deep"
+    );
+    assert.deepEqual(forest.roots.map(root => root.path), ["projects"]);
+    assert.equal(forest.folders.get("projects").parentPath, null);
+});
+
+test("forest: a template under template-less folders is a local root", () => {
+    const forest = buildForest({
+        files: [
+            { path: "loose/a/b/!Template.md", props: map([["x", 1]]) },
+            { path: "loose/a/b/note.md", props: map([["x", 1]]) },
+            { path: "loose/a/note.md", props: map([["x", 1]]) },
+        ],
+        templateFilename: TEMPLATE,
+    });
+
+    assert.deepEqual(forest.roots.map(root => root.path), ["loose/a/b"]);
+    assert.deepEqual(forest.outsideNotes.map(note => note.path), ["loose/a/note.md"]);
+    assert.equal(forest.nodes.get("loose/a/note.md").scopeFolder, null);
+});
+
 test("forest: path ordering is numeric", () => {
     assert.ok(compareVaultPaths("chapter 2", "chapter 10") < 0);
 });

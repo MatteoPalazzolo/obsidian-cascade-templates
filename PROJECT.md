@@ -165,6 +165,17 @@ Dettagli:
   un template senza template antenati è una local root. Le note fuori da ogni
   cascata sono contate a parte, quelle senza frontmatter restano righe attenuate
   senza badge.
+- **Solo le cartelle con un template sono nodi**: una cartella senza template
+  (anche una catena di cartelle senza template) non compare nell'albero, le sue
+  note risalgono alla cartella-template più vicina. L'etichetta di una cartella
+  è quindi il percorso relativo al parent visibile (`deep` se è figlia diretta,
+  `skip/deep` quando in mezzo sono state appiattite delle cartelle), con il
+  percorso completo nel tooltip. Anche le note mostrano il percorso completo nel
+  tooltip, perché due `index.md` di sottocartelle diverse possono convivere
+  nello stesso gruppo.
+- Il gruppo `N notes` è solo una compattazione: le note al suo interno hanno la
+  sua stessa indentazione, non un gradino in più, così non sembrano un livello
+  dell'albero. Restano righe cliccabili con i loro verbi.
 - **Regola `ok`**: `ok` significa *stesso insieme di chiavi*, non stessi valori
   (`computeMapConformance`). Un template è `missing` solo se gli mancano chiavi
   del parent; le sue chiavi extra sono specializzazione attesa.
@@ -242,7 +253,7 @@ Dettagli:
 - `src/core/mapOperations.ts` — merge, conformità, `areMapsEqual`.
 - `src/core/setOperations.ts` — helper Set puri (sostituzione mobile-safe dei metodi TC39).
 - `src/core/frontmatterChanges.ts` — `REMOVED`, diff autorevole delle chiavi toccate e applicazione di un patch.
-- `src/core/forest.ts` — derivazione pura della foresta (local root, sotto-cascate, stati, badge, conteggi, catena sound) con `referenceFor(node)` iniettabile per D.
+- `src/core/forest.ts` — derivazione pura della foresta (local root, sotto-cascate, stati, badge, conteggi, catena sound, appiattimento delle cartelle senza template) con `referenceFor(node)` iniettabile per D.
 - `src/core/journal.ts` — journal puro: entry a target state, budget/interning/eviction, preflight del rewind, conflitti e file spariti.
 - `src/core/reconformSession.ts` — modello puro della sessione per path (stack + cursore condivisi dalle tab della stessa nota).
 - `src/core/reconformHistory.ts` — adapter I/O della sessione: stack per nota, sweep delle note visibili, scritture via templateAPI.

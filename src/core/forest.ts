@@ -79,28 +79,44 @@ export interface ForestFileNode extends NodeBase {
 	chainSound: boolean;
 	/** Templates only: no ancestor template means this is a local root. */
 	localRoot: boolean;
+	/**
+	 * Cascade folder the file belongs to: its own folder for a template, the
+	 * nearest ancestor with a template for a note. `null` = outside every
+	 * cascade. With flattened folders this may be several levels above the file.
+	 */
+	scopeFolder: string | null;
 }
 
-/** AI: A folder row; the template is a child of the folder, never one of the notes. */
+/**
+ * AI: A cascade folder row. Only folders that contain a template become nodes:
+ * a template-less folder is transparent, so consecutive template-less folders
+ * collapse into the nearest ancestor that has one (recursively). The physical
+ * path is kept because it is what the actions and the labels target.
+ */
 export interface ForestFolderNode extends NodeBase {
 	kind: "folder";
 	localRoot: boolean;
-	/** Template physically placed in this folder, if any. */
+	/** Template physically placed in this folder; never `null` for a node. */
 	template: ForestFileNode | null;
+	/** Cascade folders whose nearest ancestor with a template is this folder. */
 	folders: ForestFolderNode[];
+	/** Notes of this folder plus the notes of the flattened folders below it. */
 	notes: ForestFileNode[];
 	/** Nearest template for the notes of this folder (display only). */
 	referencePath: string | null;
+	/** Nearest ancestor cascade folder, `null` for a local root. */
+	parentPath: string | null;
 }
 
 /** AI: Whole forest: the subtrees of the local roots plus what stays outside. */
 export interface Forest {
+	/** Cascade folders without a cascade ancestor (they own a template). */
 	roots: ForestFolderNode[];
 	/** Notes not reachable from any local root (no template at all). */
 	outsideNotes: ForestFileNode[];
 	/** All notes and templates keyed by path. */
 	nodes: Map<string, ForestFileNode>;
-	/** All folders keyed by path (`""` is the vault root). */
+	/** Cascade folders keyed by path: only folders that directly own a template. */
 	folders: Map<string, ForestFolderNode>;
 }
 
@@ -279,27 +295,18 @@ export function collectIssueGroups(forest: Forest): IssueGroups {
  * AI: Builds the forest from plain file records.
  *
  * Algorithm:
- * 1. collect every folder mentioned by a file path;
- * 2. resolve each node against the injected reference;
- * 3. compute conformance and chain soundness for every file;
- * 4. attach files to folders, then folder to folder;
- * 5. promote the folders whose template has no ancestor to local roots.
+ * 1. resolve each node against the injected reference;
+ * 2. compute conformance and chain soundness for every file;
+ * 3. create a node only for the folders that own a template, and attach every
+ *    note to the nearest ancestor that does (template-less folders flatten);
+ * 4. link the cascade folders to their nearest cascade ancestor;
+ * 5. promote the folders without a cascade ancestor to local roots.
  */
 export function buildForest(input: ForestInput): Forest {
 	const files = new Map<string, ForestFileInput>();
 	for (const file of input.files) files.set(file.path, file);
 
 	const templateFor = input.referenceFor ?? createFolderReferenceResolver(files, input.templateFilename);
-
-	const folderPaths = new Set<string>([""]);
-	for (const path of files.keys()) {
-		let folder = parentFolderPath(path);
-		for (;;) {
-			folderPaths.add(folder);
-			if (folder === "") break;
-			folder = parentFolderPath(folder);
-		}
-	}
 
 	const nodes = new Map<string, ForestFileNode>();
 	const folderTemplates = new Map<string, string>();
@@ -317,6 +324,7 @@ export function buildForest(input: ForestInput): Forest {
 			referencePath: null,
 			chainSound: false,
 			localRoot: false,
+			scopeFolder: null,
 		};
 
 		const reference = templateFor({ path, kind, props: file.props });
@@ -361,64 +369,81 @@ export function buildForest(input: ForestInput): Forest {
 			: isTemplateSound(node.referencePath);
 	}
 
-	// Folder tree. Folders are created for every ancestor, even when they hold
-	// no file directly, because the cascade is a structural map.
+	// Cascade folder tree. A folder is a node only when it directly contains a
+	// template; a template-less folder is transparent. Consecutive transparent
+	// folders collapse recursively into the nearest ancestor that has a
+	// template, and the notes they hold move up with them.
 	const folders = new Map<string, ForestFolderNode>();
 	const folderNode = (path: string): ForestFolderNode => {
 		const existing = folders.get(path);
 		if (existing) return existing;
 
+		const templatePath = folderTemplates.get(path);
+		const template = templatePath ? nodes.get(templatePath) ?? null : null;
 		const node: ForestFolderNode = {
 			kind: "folder",
 			path,
 			name: path === "" ? "/" : baseName(path),
 			state: "none",
 			counts: emptyCounts(),
-			localRoot: false,
-			template: null,
+			localRoot: template?.localRoot ?? false,
+			template,
 			folders: [],
 			notes: [],
-			referencePath: null,
+			referencePath: template?.path ?? null,
+			parentPath: null,
 		};
 		folders.set(path, node);
 		return node;
 	};
 
-	for (const path of folderPaths) folderNode(path);
+	for (const folderPath of folderTemplates.keys()) folderNode(folderPath);
 
-	// Attach files to their folder.
+	// Nearest cascade folder for a path: the path itself when it owns a template,
+	// otherwise its closest ancestor that does. `null` means no cascade at all.
+	const scopeFolderFor = (path: string): ForestFolderNode | null => {
+		let current = path;
+		for (;;) {
+			const found = folders.get(current);
+			if (found) return found;
+			if (current === "") return null;
+			current = parentFolderPath(current);
+		}
+	};
+
+	// Attach files: a template lives in its own folder, a note belongs to the
+	// nearest cascade folder above it (possibly several physical levels up).
 	for (const node of nodes.values()) {
-		const folder = folderNode(parentFolderPath(node.path));
 		if (node.kind === "template") {
-			folder.template = node;
+			node.scopeFolder = parentFolderPath(node.path);
+			continue;
+		}
+
+		const scope = scopeFolderFor(parentFolderPath(node.path));
+		if (!scope) {
+			node.scopeFolder = null;
+			continue;
+		}
+		node.scopeFolder = scope.path;
+		scope.notes.push(node);
+	}
+
+	// Link cascade folders to their nearest cascade ancestor, sorted by path.
+	const roots: ForestFolderNode[] = [];
+	for (const folder of folders.values()) {
+		const parent = folder.path === "" ? null : scopeFolderFor(parentFolderPath(folder.path));
+		folder.parentPath = parent?.path ?? null;
+		if (parent) {
+			parent.folders.push(folder);
 		} else {
-			folder.notes.push(node);
+			roots.push(folder);
 		}
 	}
-
-	// Attach folders to their parent, sorted by path.
-	const childFolders = new Map<string, ForestFolderNode[]>();
 	for (const folder of folders.values()) {
-		if (folder.path === "") continue;
-		const parent = folderNode(parentFolderPath(folder.path));
-		const list = childFolders.get(parent.path) ?? [];
-		list.push(folder);
-		childFolders.set(parent.path, list);
-	}
-	for (const [parentPath, list] of childFolders) {
-		const parent = folderNode(parentPath);
-		list.sort((first, second) => compareVaultPaths(first.path, second.path));
-		parent.folders = list;
-	}
-	for (const folder of folders.values()) {
+		folder.folders.sort((first, second) => compareVaultPaths(first.path, second.path));
 		folder.notes.sort((first, second) => compareVaultPaths(first.path, second.path));
-		const reference = templateFor({
-			path: folder.path === "" ? input.templateFilename : `${folder.path}/${input.templateFilename}`,
-			kind: "template",
-			props: null,
-		});
-		folder.referencePath = folder.template?.path ?? reference?.path ?? null;
 	}
+	roots.sort((first, second) => compareVaultPaths(first.path, second.path));
 
 	// Counters and badges are bottom-up: a folder describes its whole subtree.
 	const visited = new Set<string>();
@@ -446,19 +471,6 @@ export function buildForest(input: ForestInput): Forest {
 
 	for (const folder of folders.values()) finalizeFolder(folder);
 
-	// A local root is a folder whose own template has no ancestor. Its whole
-	// subtree is the forest universe: folders under another local root cannot
-	// exist by definition (a nested template always has an ancestor).
-	const roots: ForestFolderNode[] = [];
-	for (const [folderPath, templatePath] of folderTemplates) {
-		const template = nodes.get(templatePath);
-		if (!template?.localRoot) continue;
-		const root = folderNode(folderPath);
-		root.localRoot = true;
-		roots.push(root);
-	}
-	roots.sort((first, second) => compareVaultPaths(first.path, second.path));
-
 	const outsideNotes: ForestFileNode[] = [];
 	for (const node of nodes.values()) {
 		if (node.kind !== "note") continue;
@@ -468,15 +480,4 @@ export function buildForest(input: ForestInput): Forest {
 	outsideNotes.sort((first, second) => compareVaultPaths(first.path, second.path));
 
 	return { roots, outsideNotes, nodes, folders };
-}
-
-/** AI: Ancestor folder paths of a file, root excluded, for breadcrumbs. */
-export function folderTrail(path: string): string[] {
-	const trail: string[] = [];
-	let folder = parentFolderPath(path);
-	while (folder !== "") {
-		trail.unshift(folder);
-		folder = parentFolderPath(folder);
-	}
-	return trail;
 }

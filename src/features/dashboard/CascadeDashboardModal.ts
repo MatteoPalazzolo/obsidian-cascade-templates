@@ -8,8 +8,6 @@ import {
 	baseName,
 	countIssues,
 	collectIssueGroups,
-	folderTrail,
-	parentFolderPath,
 	type Forest,
 	type ForestFileNode,
 	type ForestFolderNode,
@@ -494,7 +492,7 @@ export class CascadeDashboardModal extends Modal {
 				parentId,
 				hasChildren,
 				expanded,
-				label: folder.localRoot ? folderLabel(folder) : folder.name,
+				label: folderRowLabel(folder),
 				folder,
 				context: false,
 			});
@@ -524,7 +522,9 @@ export class CascadeDashboardModal extends Modal {
 				});
 				if (groupExpanded) {
 					for (const note of folder.notes) {
-						rows.push(this.fileRow(note, level + 2, groupId, note.state === "none"));
+						// Same indentation as the group label: the group is only a
+						// compaction of the notes below, not a tree node of its own.
+						rows.push(this.fileRow(note, level + 1, groupId, note.state === "none"));
 					}
 				}
 			}
@@ -575,10 +575,18 @@ export class CascadeDashboardModal extends Modal {
 		if (this.issuesExpanded) return;
 		this.issuesExpanded = true;
 
+		const forest = this.snapshot?.forest;
+		if (!forest) return;
+
+		// Folders without a template are flattened, so the physical trail of a
+		// note no longer maps to rows. Expand from the node's cascade folder up.
 		for (const node of nodes) {
-			for (const folder of folderTrail(node.path)) this.expanded.add(`f:${folder}`);
-			this.expanded.add(`f:${parentFolderPath(node.path)}`);
-			this.expanded.add(`g:${parentFolderPath(node.path)}`);
+			let scope = node.scopeFolder;
+			while (scope !== null) {
+				this.expanded.add(`f:${scope}`);
+				this.expanded.add(`g:${scope}`);
+				scope = forest.folders.get(scope)?.parentPath ?? null;
+			}
 		}
 	}
 
@@ -612,7 +620,7 @@ export class CascadeDashboardModal extends Modal {
 				parentId,
 				hasChildren: true,
 				expanded,
-				label: folder.localRoot ? folderLabel(folder) : folder.name,
+				label: folderRowLabel(folder),
 				folder,
 				context: false,
 			});
@@ -643,7 +651,8 @@ export class CascadeDashboardModal extends Modal {
 				});
 				if (groupExpanded) {
 					for (const note of notes) {
-						rows.push(this.fileRow(note, level + 2, groupId, false));
+						// Same indentation as the group label, see buildCascadeRows.
+						rows.push(this.fileRow(note, level + 1, groupId, false));
 					}
 				}
 			}
@@ -711,28 +720,19 @@ export class CascadeDashboardModal extends Modal {
 		el.append(icon);
 
 		const name = createSpan({ cls: "ct-row-name", text: row.label });
+		// Flattened folders and notes from a flattened subfolder lose their
+		// structural context, so the full path stays available on hover.
 		if (row.node) {
 			name.addClass("is-link");
+			name.title = row.node.path;
 			name.addEventListener("click", event => {
 				event.stopPropagation();
 				void this.openPath(row.node?.path);
 			});
+		} else if (row.folder) {
+			name.title = row.folder.path === "" ? "/" : row.folder.path;
 		}
 		el.append(name);
-
-		/*
-		if (row.kind === "folder" && row.folder?.localRoot && row.folder.referencePath) {
-			el.createSpan({ cls: "ct-row-ref", text: `→ ${row.folder.referencePath}` });
-		}
-
-		if (row.node) {
-			const reference = referenceLabel(row.node);
-			if (reference) {
-				el.createSpan({ cls: "ct-row-ref", text: reference });
-				el.title = reference;
-			}
-		}
-		*/
 
 		if (row.folder && row.kind !== "notes" && !row.context) {
 			el.append(this.createCounts(row.folder.counts, row.folder.state));
@@ -1746,14 +1746,17 @@ function folderLabel(folder: ForestFolderNode): string {
 	return folder.path === "" ? "Vault root" : folder.path;
 }
 
-/*
-function referenceLabel(node: ForestFileNode): string | null {
-	if (!node.referencePath) return null;
-	return node.kind === "template"
-		? `parent: ${node.referencePath}`
-		: `template: ${node.referencePath}`;
+/**
+ * AI: Label of a cascade folder row. A local root shows its full path; every
+ * other folder shows the path relative to its cascade parent, which is only
+ * longer than the name when flattened folders sit between the two.
+ */
+function folderRowLabel(folder: ForestFolderNode): string {
+	if (folder.parentPath === null) return folderLabel(folder);
+
+	const prefix = folder.parentPath === "" ? "" : `${folder.parentPath}/`;
+	return folder.path.startsWith(prefix) ? folder.path.slice(prefix.length) : folder.name;
 }
-*/
 
 function primaryVerb(node: ForestFileNode): VerbConfig | null {
 	if (node.kind === "template" && node.state === "missing") {

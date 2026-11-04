@@ -189,7 +189,7 @@ Back undoes the last step and rewinds the button. Existing notes are never modif
 
 **Open cascade dashboard** is available from the ribbon and the command palette. The dashboard is a modal, not a persistent view.
 
-By default it shows the **Cascade** map only: a read-only tree of local roots, folders, templates and notes, with the reference template of every local root and the number of notes outside any cascade. This is the safe mode: it never writes.
+By default it shows the **Cascade** map only: a read-only tree of local roots, template folders, templates and notes, plus the number of notes outside any cascade. Only folders that contain a template are nodes: template-less folders are flattened into the nearest template folder above them, so their notes appear in that folder's group. A folder label is its path relative to the visible parent (`skip/deep` when folders were flattened in between), and every row keeps its full path in the tooltip. This is the safe mode: it never writes.
 
 The **Issues** and **History** tabs are **experimental and opt-in**. Enable **Issues and History tabs (experimental)** in the settings to get:
 

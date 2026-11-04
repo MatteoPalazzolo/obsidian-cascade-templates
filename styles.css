@@ -180,14 +180,6 @@
         text-decoration: underline;
     }
 
-    & .ct-row-ref {
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-        color: var(--text-faint);
-        font-size: var(--font-ui-smaller);
-    }
-
     & .ct-row-counts {
         display: inline-flex;
         gap: var(--size-2-2);
