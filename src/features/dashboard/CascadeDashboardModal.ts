@@ -98,6 +98,13 @@ const TAB_LABELS: Record<TabId, string> = {
 	history: "History",
 };
 
+/**
+ * AI: Notes are folded into an `N notes` group only when the folder lists more
+ * than this many notes. At or below the threshold they are listed directly, and
+ * a leaf folder never uses the group: collapsing the folder already hides them.
+ */
+const NOTES_GROUP_THRESHOLD = 3;
+
 const SNIPPET = `projects/
 ├── !Template.md
 │   ---
@@ -504,6 +511,19 @@ export class CascadeDashboardModal extends Modal {
 			for (const child of folder.folders) pushFolder(child, level + 1, folderId);
 
 			if (folder.notes.length > 0) {
+				// Only a folder that also shows child template folders needs the
+				// group, and only past the threshold: otherwise the notes are just
+				// listed under the folder that already hides them when collapsed.
+				const grouped = folder.folders.length > 0
+					&& folder.notes.length > NOTES_GROUP_THRESHOLD;
+
+				if (!grouped) {
+					for (const note of folder.notes) {
+						rows.push(this.fileRow(note, level + 1, folderId, note.state === "none"));
+					}
+					return;
+				}
+
 				const groupId = `g:${folder.path}`;
 				const groupExpanded = this.expanded.has(groupId);
 				rows.push({
@@ -633,6 +653,19 @@ export class CascadeDashboardModal extends Modal {
 
 			const notes = folder.notes.filter(note => matching.has(note.path));
 			if (notes.length > 0) {
+				// The group separates notes from the child folder rows. When no child
+				// row is visible (leaf in this view) or the count is small, the notes
+				// are listed directly under their folder.
+				const grouped = folder.folders.some(child => folderRelevant(child))
+					&& notes.length > NOTES_GROUP_THRESHOLD;
+
+				if (!grouped) {
+					for (const note of notes) {
+						rows.push(this.fileRow(note, level + 1, folderId, false));
+					}
+					return;
+				}
+
 				const groupId = `g:${folder.path}`;
 				const groupExpanded = this.expanded.has(groupId);
 				rows.push({

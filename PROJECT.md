@@ -175,9 +175,12 @@ Dettagli:
   percorso completo nel tooltip. Anche le note mostrano il percorso completo nel
   tooltip, perché due `index.md` di sottocartelle diverse possono convivere
   nello stesso gruppo.
-- Il gruppo `N notes` è solo una compattazione: le note al suo interno hanno la
-  sua stessa indentazione, non un gradino in più, così non sembrano un livello
-  dell'albero. Restano righe cliccabili con i loro verbi.
+- Il gruppo `N notes` è solo una compattazione: compare solo nelle cartelle che
+  mostrano anche sottocartelle-template e solo **oltre 3 note** (`> 3`, costante
+  `NOTES_GROUP_THRESHOLD` in `CascadeDashboardModal.ts`). Con 1–3 note, e in ogni
+  cartella leaf, le note sono righe dirette sotto la cartella: chiuderla basta a
+  nasconderle. Le note del gruppo hanno la stessa indentazione dell'etichetta,
+  così non sembrano un livello dell'albero; restano righe cliccabili con i verbi.
 - **Regola `ok`**: `ok` significa *stesso insieme di chiavi*, non stessi valori
   (`computeMapConformance`). Un template è `missing` solo se gli mancano chiavi
   del parent; le sue chiavi extra sono specializzazione attesa.
