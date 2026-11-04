@@ -13,7 +13,6 @@ import {
 	type Forest,
 	type ForestFileNode,
 	type ForestFolderNode,
-	type IssueGroups,
 	type ScopeCounts,
 } from "../../core/forest";
 import {
@@ -88,6 +87,11 @@ interface VerbConfig {
 	label: string;
 	fullLabel: string;
 	icon: string;
+}
+
+interface FolderVerb extends VerbConfig {
+	nodes: ForestFileNode[];
+	blocked: boolean;
 }
 
 const TAB_LABELS: Record<TabId, string> = {
@@ -178,6 +182,11 @@ export class CascadeDashboardModal extends Modal {
 	private progressTextEl: HTMLElement | null = null;
 	private closed = false;
 	private indexCheckTimer: number | null = null;
+	private subtreeCache = new Map<string, {
+		templates: ForestFileNode[];
+		notesMissing: ForestFileNode[];
+		notesExtra: ForestFileNode[];
+	}>();
 
 	constructor(app: App) {
 		super(app);
@@ -279,6 +288,7 @@ export class CascadeDashboardModal extends Modal {
 	}
 
 	private rebuildForest(): void {
+		this.subtreeCache.clear();
 		try {
 			this.snapshot = buildVaultForest(this.app);
 		} catch (error) {
@@ -543,7 +553,6 @@ export class CascadeDashboardModal extends Modal {
 	private renderIssues(parent: HTMLElement): void {
 		if (!this.snapshot) return;
 		const forest = this.snapshot.forest;
-		const groups = collectIssueGroups(forest);
 
 		if (this.error?.tab === "issues") this.renderErrorCard(parent, this.error);
 
@@ -552,54 +561,25 @@ export class CascadeDashboardModal extends Modal {
 			return;
 		}
 
-		this.ensureIssuesExpanded(groups);
-		const total = countIssues(forest);
-		if (total > 0) {
-			this.renderIssueGroup(parent, "Templates needing update", groups.templates, "templates");
-			this.renderIssueGroup(parent, "Notes missing properties", groups.notesMissing, "notesMissing");
-			this.renderIssueGroup(parent, "Notes with extra properties", groups.notesExtra, "notesExtra");
-		}
+		// One tree for all issue kinds: the three groups used to repeat the same
+		// ancestors three times and hid the fact that the verbs act on a folder
+		// subtree. The folder rows carry the bulk verbs; the file rows keep the
+		// single-file ones.
+		const groups = collectIssueGroups(forest);
+		const nodes = [...groups.templates, ...groups.notesMissing, ...groups.notesExtra];
+		this.ensureIssuesExpanded(nodes);
+		this.renderTree(parent, this.buildIssueRows(nodes), true);
 	}
 
-	private ensureIssuesExpanded(groups: IssueGroups): void {
+	private ensureIssuesExpanded(nodes: readonly ForestFileNode[]): void {
 		if (this.issuesExpanded) return;
 		this.issuesExpanded = true;
 
-		for (const node of [...groups.templates, ...groups.notesMissing, ...groups.notesExtra]) {
+		for (const node of nodes) {
 			for (const folder of folderTrail(node.path)) this.expanded.add(`f:${folder}`);
 			this.expanded.add(`f:${parentFolderPath(node.path)}`);
 			this.expanded.add(`g:${parentFolderPath(node.path)}`);
 		}
-	}
-
-	private renderIssueGroup(
-		parent: HTMLElement,
-		title: string,
-		nodes: ForestFileNode[],
-		kind: "templates" | "notesMissing" | "notesExtra"
-	): void {
-		if (nodes.length === 0) return;
-
-		const section = createDiv({ cls: "ct-issue-group" });
-		const header = createDiv({ cls: "ct-issue-header" });
-		header.createSpan({ cls: "ct-issue-title", text: title });
-		header.createSpan({ cls: "ct-issue-count", text: String(nodes.length) });
-
-		const config = bulkVerb(kind);
-		const bulk = createEl("button", { cls: "ct-issue-bulk", text: config.label });
-		const gated = kind === "notesExtra" && !nodes.every(node => node.chainSound);
-		bulk.disabled = this.busy || gated;
-		bulk.title = gated ? "Align is locked: update the template chain first" : config.label;
-		bulk.addEventListener("click", () => {
-			if (bulk.disabled) return;
-			void this.runVerb(nodes, config.mode, config.label, true);
-		});
-		header.append(bulk);
-		section.append(header);
-
-		const rows = this.buildIssueRows(nodes);
-		this.renderTree(section, rows, true);
-		parent.append(section);
 	}
 
 	private buildIssueRows(nodes: ForestFileNode[]): RowModel[] {
@@ -634,7 +614,7 @@ export class CascadeDashboardModal extends Modal {
 				expanded,
 				label: folder.localRoot ? folderLabel(folder) : folder.name,
 				folder,
-				context: true,
+				context: false,
 			});
 
 			if (!expanded) return;
@@ -773,6 +753,11 @@ export class CascadeDashboardModal extends Modal {
 			el.append(this.createRowActions(row.node));
 		}
 
+		if (interactive && row.kind === "folder" && row.folder) {
+			el.classList.add("has-folder-actions");
+			el.append(this.createFolderActions(row.folder));
+		}
+
 		el.addEventListener("click", () => {
 			this.activeRowId = row.id;
 			for (const [id, element] of this.rowElements) {
@@ -854,6 +839,148 @@ export class CascadeDashboardModal extends Modal {
 		return container;
 	}
 
+	private createFolderActions(folder: ForestFolderNode): HTMLElement {
+		const container = createDiv({ cls: "ct-folder-actions" });
+
+		for (const verb of this.folderVerbs(folder)) {
+			const disabled = verb.nodes.length === 0;
+			const action = createDiv({ cls: "ct-folder-action text-icon-button" });
+			action.setAttribute("role", "button");
+			action.setAttribute("tabindex", "-1");
+			action.setAttribute("aria-disabled", String(disabled || verb.blocked || this.busy));
+			action.classList.toggle("is-blocked", verb.blocked);
+			action.classList.toggle("is-disabled", disabled || this.busy);
+			const icon = createSpan({ cls: "text-button-icon" });
+			setIconSafe(icon, verb.icon);
+			const label = createSpan({ cls: "text-button-label", text: verb.fullLabel });
+			action.append(icon, label);
+			action.title = verb.blocked
+				? "Align is locked: update the template chain first"
+				: `${verb.fullLabel} in this folder and below (${verb.nodes.length})`;
+			action.addEventListener("click", event => {
+				event.stopPropagation();
+				if (disabled || verb.blocked || this.busy) return;
+				void this.runVerb(verb.nodes, verb.mode, verb.fullLabel, true);
+			});
+			container.append(action);
+		}
+
+		// Mobile: the three verbs do not fit next to the counts, so they move
+		// into the row menu. CSS swaps the two presentations.
+		const more = createDiv({ cls: "ct-folder-more clickable-icon" });
+		setIconSafe(more, "more-horizontal");
+		more.setAttribute("role", "button");
+		more.setAttribute("tabindex", "-1");
+		more.setAttribute("aria-label", "Folder actions");
+		more.addEventListener("click", event => {
+			event.stopPropagation();
+			this.openFolderMenu(folder, event);
+		});
+		container.append(more);
+
+		return container;
+	}
+
+	/** AI: Bulk verbs for one folder subtree; only the files that need it. */
+	private folderVerbs(folder: ForestFolderNode): FolderVerb[] {
+		const nodes = this.folderSubtree(folder);
+		const alignBlocked = nodes.notesExtra.some(node => !node.chainSound);
+
+		return [
+			{
+				mode: "add-missing",
+				label: "Update templates",
+				fullLabel: "Update templates",
+				icon: "wrench",
+				nodes: nodes.templates,
+				blocked: false,
+			},
+			{
+				mode: "add-missing",
+				label: "Update notes",
+				fullLabel: "Update notes",
+				icon: "wrench",
+				nodes: nodes.notesMissing,
+				blocked: false,
+			},
+			{
+				mode: "remove-extra",
+				label: "Align notes",
+				fullLabel: "Align notes",
+				icon: "anvil",
+				nodes: nodes.notesExtra,
+				blocked: alignBlocked,
+			},
+		];
+	}
+
+	/**
+	 * AI: The subtree of a folder, cached per forest snapshot. Without the cache
+	 * every visible folder row would walk the same nodes again on each render.
+	 */
+	private folderSubtree(folder: ForestFolderNode): {
+		templates: ForestFileNode[];
+		notesMissing: ForestFileNode[];
+		notesExtra: ForestFileNode[];
+	} {
+		const cached = this.subtreeCache.get(folder.path);
+		if (cached) return cached;
+
+		const result = {
+			templates: [] as ForestFileNode[],
+			notesMissing: [] as ForestFileNode[],
+			notesExtra: [] as ForestFileNode[],
+		};
+
+		const visit = (current: ForestFolderNode): void => {
+			if (current.template?.state === "missing") result.templates.push(current.template);
+			for (const note of current.notes) {
+				if (note.state === "missing") result.notesMissing.push(note);
+				if (note.state === "extra") result.notesExtra.push(note);
+			}
+			for (const child of current.folders) visit(child);
+		};
+		visit(folder);
+
+		const byPath = (first: ForestFileNode, second: ForestFileNode): number =>
+			first.path.localeCompare(second.path, undefined, { numeric: true });
+		result.templates.sort(byPath);
+		result.notesMissing.sort(byPath);
+		result.notesExtra.sort(byPath);
+
+		this.subtreeCache.set(folder.path, result);
+		return result;
+	}
+
+	private openFolderMenu(folder: ForestFolderNode, event: Event, anchor?: HTMLElement): void {
+		const menu = new Menu();
+		for (const verb of this.folderVerbs(folder)) {
+			const disabled = verb.nodes.length === 0;
+			menu.addItem(item => item
+				.setTitle(verb.blocked
+					? `${verb.fullLabel} (chain not sound)`
+					: `${verb.fullLabel} (${verb.nodes.length})`)
+				.setIcon(verb.icon)
+				.setDisabled(disabled || verb.blocked || this.busy)
+				.onClick(() => {
+					if (disabled || verb.blocked || this.busy) return;
+					void this.runVerb(verb.nodes, verb.mode, verb.fullLabel, true);
+				}));
+		}
+
+		this.showMenu(menu, event, anchor);
+	}
+
+	private showMenu(menu: Menu, event: Event, anchor?: HTMLElement): void {
+		const target = anchor ?? event.currentTarget;
+		if (target instanceof HTMLElement) {
+			const rect = target.getBoundingClientRect();
+			menu.showAtPosition({ x: rect.left, y: rect.bottom });
+		} else {
+			menu.showAtMouseEvent(event as MouseEvent);
+		}
+	}
+
 	private toggleRow(row: RowModel): void {
 		if (!row.hasChildren) return;
 		if (this.expanded.has(row.id)) {
@@ -930,7 +1057,11 @@ export class CascadeDashboardModal extends Modal {
 				}
 				case "Enter":
 					event.preventDefault();
-					if (currentRow.node) this.openRowMenu(currentRow.node, event, current);
+					if (currentRow.node) {
+						this.openRowMenu(currentRow.node, event, current);
+					} else if (currentRow.kind === "folder" && currentRow.folder) {
+						this.openFolderMenu(currentRow.folder, event, current);
+					}
 					break;
 				case " ":
 					event.preventDefault();
@@ -962,13 +1093,7 @@ export class CascadeDashboardModal extends Modal {
 				}));
 		}
 
-		const target = anchor ?? event.currentTarget;
-		if (target instanceof HTMLElement) {
-			const rect = target.getBoundingClientRect();
-			menu.showAtPosition({ x: rect.left, y: rect.bottom });
-		} else {
-			menu.showAtMouseEvent(event as MouseEvent);
-		}
+		this.showMenu(menu, event, anchor);
 	}
 
 	private async openPath(path: string | undefined): Promise<void> {
@@ -1635,16 +1760,6 @@ function primaryVerb(node: ForestFileNode): VerbConfig | null {
 		return { mode: "remove-extra", label: "Align", fullLabel: "Align note", icon: "anvil" };
 	}
 	return null;
-}
-
-function bulkVerb(kind: "templates" | "notesMissing" | "notesExtra"): VerbConfig {
-	if (kind === "templates") {
-		return { mode: "add-missing", label: "Update templates", fullLabel: "Update templates", icon: "wrench" };
-	}
-	if (kind === "notesMissing") {
-		return { mode: "add-missing", label: "Update notes", fullLabel: "Update notes", icon: "wrench" };
-	}
-	return { mode: "remove-extra", label: "Align notes", fullLabel: "Align notes", icon: "anvil" };
 }
 
 function entryLabel(entry: JournalEntry): string {

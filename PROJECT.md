@@ -174,13 +174,16 @@ Dettagli:
   - accesa: mostra `Cascade | Issues (N) | History (M)`, i verbi e `Fix all`.
   La descrizione avvisa che la History è un journal **in memoria di sessione**,
   non un backup: va tenuta una copia del vault altrove.
-- `Issues (N)` elenca solo i rami con un problema, raggruppati per tipo
-  (`Templates needing update`, `Notes missing properties`, `Notes with extra
-  properties`). Gli antenati restano righe di contesto senza azioni e non
-  contano nei counter. `N` è lo stesso numero di `Fix all (N)`.
+- `Issues (N)` è un **unico albero** con i soli rami che portano a un problema:
+  template da aggiornare, note con chiavi mancanti e note con chiavi extra
+  convivono nello stesso contesto, senza ripetere tre volte gli stessi antenati.
+  Ogni riga cartella porta i tre verbi bulk sul proprio sottoalbero
+  (`Update templates`, `Update notes`, `Align notes`), con il menu `⋯` su mobile; le righe file
+  portano il verbo singolo. `N` è lo stesso numero di `Fix all (N)`.
 - Verbi: `Update template(s)` e `Update note(s)` sempre disponibili; `Align
-  note(s)` è distruttivo e sbloccato solo se l'intera catena fino alla local
-  root è sound. `Align` non tocca mai i valori esistenti, rimuove solo le chiavi.
+  note(s)` è distruttivo e sbloccato solo se l'intera catena delle note
+  coinvolte è sound. `Align` non tocca mai i valori esistenti, rimuove solo le
+  chiavi.
 - `Fix all` è una macro confermata una volta: `Update templates` → `Update
   notes` → `Align notes`. Non è atomica: si ferma al primo errore e lascia una
   entry di journal per ogni fase che ha scritto.

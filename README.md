@@ -193,7 +193,7 @@ By default it shows the **Cascade** map only: a read-only tree of local roots, f
 
 The **Issues** and **History** tabs are **experimental and opt-in**. Enable **Issues and History tabs (experimental)** in the settings to get:
 
-- **Issues (N)**: only the branches with a problem, grouped as templates needing update, notes missing properties and notes with extra properties. `Update` is always available; `Align` is destructive and stays locked until every template in the chain up to the local root conforms. Actions touch only the keys described by the verb and never overwrite existing values that the template also defines.
+- **Issues (N)**: one tree with only the branches that contain a problem. Templates needing update, notes missing properties and notes with extra properties share the same context. Every folder row carries the three bulk verbs for its subtree (`Update templates`, `Update notes`, `Align notes`), with the `⋯` menu on mobile; file rows carry the single-file verb. `Update` is always available; `Align` is destructive and stays locked until the templates of the notes involved conform. Actions touch only the keys described by the verb and never overwrite existing values that the template also defines.
 - **Fix all (N)**: runs `Update templates`, then `Update notes`, then `Align notes`, with one confirmation. It is not atomic: it stops at the first failed phase and every phase that writes remains a separate History entry.
 - **History (M)**: the dashboard operations of the current session, with undo. The journal lives in memory and dies when Obsidian closes; it is **not a backup**. Keep a copy of your vault elsewhere before using these actions.
 
