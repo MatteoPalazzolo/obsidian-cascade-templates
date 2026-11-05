@@ -756,7 +756,10 @@ export class CascadeDashboardModal extends Modal {
 			el.append(this.createCounts(row.folder.counts, row.folder.state));
 		}
 
-		if (row.kind === "folder" && row.folder && row.folder.state !== "none") {
+		// The badge aggregates the folder subtree, so it is only meaningful while
+		// the row is collapsed: once expanded, every child states the same fact
+		// on its own row and a cumulative badge would just repeat it.
+		if (row.kind === "folder" && row.folder && row.folder.state !== "none" && !row.expanded) {
 			const badge = createSpan({ cls: `ct-badge is-${row.folder.state}` });
 			setIconSafe(badge, stateIcon(row.folder));
 			badge.setAttribute("aria-label", stateLabel(row.folder.state));
