@@ -190,7 +190,12 @@ Dettagli:
   compare solo nelle cartelle che mostrano anche sottocartelle-template e solo
   **oltre 3 note** (`> 3`, costante `NOTES_GROUP_THRESHOLD` in
   `CascadeDashboardModal.ts`). Con 1–3 note, e in ogni cartella leaf, le note
-  sono righe dirette sotto la cartella: chiuderla basta a nasconderle. Quando il
+  sono righe dirette sotto la cartella: chiuderla basta a nasconderle. Il gruppo
+  porta il badge cumulativo delle note contenute, con la stessa icona
+  `folder-tree` del badge batch delle cartelle: stesso glifo = errori cumulativi
+  contenuti nello scope, e il tooltip restringe il campo alle sole note. Il badge
+  compare solo quando qualcuna è `missing` o `extra`:
+  chiudere il gruppo non nasconde un problema. Quando il
   gruppo viene espanso la sua riga sparisce e restano le note, con la stessa
   indentazione; per ricompattare si chiude la cartella, e la chiusura ripristina
   tutti i gruppi `N notes` discendenti senza chiudere le sottocartelle annidate.

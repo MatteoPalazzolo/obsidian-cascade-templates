@@ -108,6 +108,8 @@ export interface ForestFolderNode extends NodeBase {
 	 * the template with its descendants and cannot tell the two apart.
 	 */
 	descendantsState: ForestState;
+	/** Aggregate state of `notes` only; feeds the `N notes` group badge. */
+	notesState: ForestState;
 	/** Nearest template for the notes of this folder (display only). */
 	referencePath: string | null;
 	/** Nearest ancestor cascade folder, `null` for a local root. */
@@ -397,6 +399,7 @@ export function buildForest(input: ForestInput): Forest {
 			folders: [],
 			notes: [],
 			descendantsState: "none",
+			notesState: "none",
 			referencePath: template?.path ?? null,
 			parentPath: null,
 		};
@@ -455,6 +458,7 @@ export function buildForest(input: ForestInput): Forest {
 	// Counters and badges are bottom-up: a folder describes its whole subtree.
 	// `state` includes the folder's own template; `descendantsState` excludes it,
 	// so the UI can show "this template" and "its children" as separate badges.
+	// `notesState` isolates the notes for the `N notes` group badge.
 	const visited = new Set<string>();
 	const finalizeFolder = (folder: ForestFolderNode): ScopeCounts => {
 		if (visited.has(folder.path)) return folder.counts;
@@ -462,6 +466,7 @@ export function buildForest(input: ForestInput): Forest {
 		let counts = folder.template?.counts ?? emptyCounts();
 		const states: ForestState[] = [];
 		const descendantStates: ForestState[] = [];
+		const noteStates: ForestState[] = [];
 		if (folder.template) states.push(folder.template.state);
 
 		for (const child of folder.folders) {
@@ -473,11 +478,13 @@ export function buildForest(input: ForestInput): Forest {
 			counts = addCounts(counts, note.counts);
 			states.push(note.state);
 			descendantStates.push(note.state);
+			noteStates.push(note.state);
 		}
 
 		folder.counts = counts;
 		folder.state = aggregateState(states);
 		folder.descendantsState = aggregateState(descendantStates);
+		folder.notesState = aggregateState(noteStates);
 		visited.add(folder.path);
 		return counts;
 	};

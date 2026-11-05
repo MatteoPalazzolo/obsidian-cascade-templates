@@ -98,19 +98,23 @@ test("forest: descendants state excludes the folder's own template", () => {
     const root = forest.folders.get("projects");
     assert.equal(root.state, "missing");
     assert.equal(root.descendantsState, "missing");
+    assert.equal(root.notesState, "none");
 
     // Alpha: both the template and a descendant are broken.
     const alpha = forest.folders.get("projects/alpha");
     assert.equal(alpha.state, "missing");
     assert.equal(alpha.descendantsState, "missing");
+    assert.equal(alpha.notesState, "missing");
 
     // Beta: the template is broken, but the only note is fine.
     const beta = forest.folders.get("projects/beta");
     assert.equal(beta.state, "missing");
     assert.equal(beta.descendantsState, "ok");
+    assert.equal(beta.notesState, "ok");
 
     // No notes or child folders below this root.
     assert.equal(forest.folders.get("z").descendantsState, "none");
+    assert.equal(forest.folders.get("z").notesState, "none");
 });
 
 test("forest: descendants state reports extra properties without missing keys", () => {
@@ -124,6 +128,7 @@ test("forest: descendants state reports extra properties without missing keys", 
 
     assert.equal(forest.folders.get("p").state, "extra");
     assert.equal(forest.folders.get("p").descendantsState, "extra");
+    assert.equal(forest.folders.get("p").notesState, "extra");
 });
 
 test("forest: a template chain is sound only when every ancestor conforms", () => {

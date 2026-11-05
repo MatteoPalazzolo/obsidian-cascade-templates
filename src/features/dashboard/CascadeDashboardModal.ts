@@ -11,6 +11,7 @@ import {
 	type Forest,
 	type ForestFileNode,
 	type ForestFolderNode,
+	type ForestState,
 	type ScopeCounts,
 } from "../../core/forest";
 import {
@@ -115,6 +116,14 @@ const SNIPPET = `projects/
 └── alpha/
     └── note.md`;
 
+/** AI: Status icon for note states; templates use their own `file-*` pair. */
+function noteStateIcon(state: ForestState): string {
+	if (state === "ok") return "circle-check-big";
+	if (state === "extra") return "circle-alert";
+	if (state === "missing") return "circle-x";
+	return "circle-dashed";
+}
+
 /** AI: Icon of the status badge; `none` stays absent (attenuated row). */
 function stateIcon(node: ForestFileNode): string {
 	if (node.kind === "template") {
@@ -123,10 +132,7 @@ function stateIcon(node: ForestFileNode): string {
 		return "circle-dashed";
 	}
 
-	if (node.state === "ok") return "circle-check-big";
-	if (node.state === "extra") return "circle-alert";
-	if (node.state === "missing") return "circle-x";
-	return "circle-dashed";
+	return noteStateIcon(node.state);
 }
 
 function stateLabel(state: string): string {
@@ -772,6 +778,15 @@ export class CascadeDashboardModal extends Modal {
 			el.append(this.createBadge(row.node));
 		}
 
+		// The `N notes` group folds away the individual notes, so it carries their
+		// cumulative state. Only errors are shown: a clean group needs no badge.
+		if (row.kind === "notes" && row.folder) {
+			const notes = row.folder.notesState;
+			if (notes === "missing" || notes === "extra") {
+				el.append(this.createNotesGroupBadge(notes));
+			}
+		}
+
 		if (interactive && row.node) {
 			el.append(this.createRowActions(row.node));
 		}
@@ -783,10 +798,10 @@ export class CascadeDashboardModal extends Modal {
 			el.append(this.createFolderActions(row.folder, interactive));
 		}
 
-		// The Cascade map has no actions on notes, but folder rows always keep
-		// their hover menu in flow. Without an inert placeholder the folder badge
+		// The Cascade map has no actions on notes or groups, but folder rows always
+		// keep their hover menu in flow. Without an inert placeholder their badges
 		// would sit one menu-width left of every note badge.
-		if (!interactive && row.kind === "note") {
+		if (!interactive && (row.kind === "note" || row.kind === "notes")) {
 			el.append(this.createActionSlot());
 		}
 
@@ -862,7 +877,21 @@ export class CascadeDashboardModal extends Modal {
 	private createBatchBadge(state: "missing" | "extra"): HTMLElement {
 		const badge = createSpan({ cls: `ct-badge is-${state}` });
 		setIconSafe(badge, "folder-tree");
-		setTooltip(badge, "Errors in children notes or templates");
+		setTooltip(badge, "Errors in notes or templates inside this folder");
+		return badge;
+	}
+
+	/**
+	 * AI: Cumulative badge of the notes folded into the `N notes` group. It only
+	 * appears on errors and shares the folder batch icon, so the same glyph always
+	 * means "cumulative errors inside"; the tooltip narrows it down to notes.
+	 */
+	private createNotesGroupBadge(state: "missing" | "extra"): HTMLElement {
+		const badge = createSpan({ cls: `ct-badge is-${state}` });
+		setIconSafe(badge, "folder-tree");
+		setTooltip(badge, state === "missing"
+			? "Notes with missing properties inside this folder"
+			: "Notes with extra properties inside this folder");
 		return badge;
 	}
 
