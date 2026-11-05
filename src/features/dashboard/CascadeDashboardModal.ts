@@ -749,7 +749,10 @@ export class CascadeDashboardModal extends Modal {
 		}
 		el.append(name);
 
-		if (row.folder && row.kind !== "notes" && !row.context) {
+		// Counters are a conformance analysis, not a structural fact: they belong
+		// to the actionable Issues tree, while the read-only Cascade map stays a
+		// shape preview whose folder row is already summarised by its badge.
+		if (interactive && row.folder && row.kind !== "notes" && !row.context) {
 			el.append(this.createCounts(row.folder.counts, row.folder.state));
 		}
 

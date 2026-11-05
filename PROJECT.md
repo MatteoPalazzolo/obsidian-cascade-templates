@@ -160,7 +160,8 @@ Dettagli:
   controlli alla UI della nota: il pannello Properties resta invariato.
 - `Cascade` è una mappa **sola lettura** derivata dalle cartelle: per ogni local
   root mostra le sottocartelle e le note raggruppate (`N notes`), con badge
-  aggregato e conteggi `T` / `Nm` / `Ne` dello scope d'azione. La riga cartella
+  aggregato; i conteggi `T` / `Nm` / `Ne` restano solo in `Issues`, perché sono
+  un'analisi di conformità e non un fatto strutturale della mappa. La riga cartella
   **è** la riga del suo template: il badge ne riassume lo stato e non esiste una
   riga separata per il template. Il click semplice sul nome espande/collassa;
   `Ctrl`/`Cmd`+click apre il template; il menu `⋯` della riga offre sempre
