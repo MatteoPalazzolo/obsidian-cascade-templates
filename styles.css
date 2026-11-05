@@ -319,6 +319,14 @@
         color: var(--text-normal);
     }
 
+    /* AI: note rows in the Cascade map have no actions, but they reserve the
+       same trailing slot as the folder hover menu so every status badge lands
+       on the same column. The clone stays inert and invisible. */
+    & .ct-folder-actions.is-placeholder {
+        visibility: hidden;
+        pointer-events: none;
+    }
+
     /* AI: the folder menu is the mouse-only path to the template, so it exists
        on desktop too. It stays invisible unless the row is pointed at: keyboard
        focus alone does not reveal it, because Enter already opens the menu.

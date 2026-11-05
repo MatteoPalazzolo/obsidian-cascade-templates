@@ -782,6 +782,13 @@ export class CascadeDashboardModal extends Modal {
 			el.append(this.createFolderActions(row.folder, interactive));
 		}
 
+		// The Cascade map has no actions on notes, but folder rows always keep
+		// their hover menu in flow. Without an inert placeholder the folder badge
+		// would sit one menu-width left of every note badge.
+		if (!interactive && row.kind === "note") {
+			el.append(this.createActionSlot());
+		}
+
 		el.addEventListener("click", () => {
 			this.activeRowId = row.id;
 			for (const [id, element] of this.rowElements) {
@@ -828,6 +835,20 @@ export class CascadeDashboardModal extends Modal {
 		badge.setAttribute("aria-label", stateLabel(node.state));
 		badge.title = stateLabel(node.state);
 		return badge;
+	}
+
+	/**
+	 * AI: Inert clone of the folder hover menu, used to reserve the same trailing
+	 * slot on note rows. It reuses the real classes so any theme change to the
+	 * menu sizing keeps the status badges aligned without a magic width.
+	 */
+	private createActionSlot(): HTMLElement {
+		const slot = createDiv({ cls: "ct-folder-actions is-placeholder" });
+		slot.setAttribute("aria-hidden", "true");
+		const icon = createDiv({ cls: "ct-folder-more clickable-icon" });
+		setIconSafe(icon, "more-horizontal");
+		slot.append(icon);
+		return slot;
 	}
 
 	private createRowActions(node: ForestFileNode): HTMLElement {
