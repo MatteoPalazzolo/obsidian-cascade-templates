@@ -175,9 +175,11 @@ Dettagli:
   note risalgono alla cartella-template più vicina. L'etichetta di una cartella
   è quindi il percorso relativo al parent visibile (`deep` se è figlia diretta,
   `skip/deep` quando in mezzo sono state appiattite delle cartelle), con il
-  percorso completo nel tooltip. Anche le note mostrano il percorso completo nel
-  tooltip, perché due `index.md` di sottocartelle diverse possono convivere
-  nello stesso gruppo.
+  percorso completo nel tooltip. Anche le **note** usano lo stesso criterio:
+  l'etichetta è il percorso relativo alla cartella-template che le contiene
+  (`note.md` se sono dirette, `alpha/note.md` se arrivano da una sottocartella
+  appiattita), così due `index.md` di rami diversi restano distinguibili; il
+  tooltip conserva il percorso completo.
 - Il gruppo `N notes` è solo una compattazione e vive **solo nella mappa**:
   compare solo nelle cartelle che mostrano anche sottocartelle-template e solo
   **oltre 3 note** (`> 3`, costante `NOTES_GROUP_THRESHOLD` in

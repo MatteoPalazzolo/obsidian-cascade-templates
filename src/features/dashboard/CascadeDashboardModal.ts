@@ -563,7 +563,7 @@ export class CascadeDashboardModal extends Modal {
 			parentId,
 			hasChildren: false,
 			expanded: false,
-			label: node.name,
+			label: fileRowLabel(node),
 			node,
 			context,
 		};
@@ -1807,7 +1807,7 @@ export class CascadeDashboardModal extends Modal {
 // ---------------------------------------------------------------- helpers
 
 function folderLabel(folder: ForestFolderNode): string {
-	return folder.path === "" ? "Vault root" : folder.path;
+	return folder.path === "" ? "Root Template" : folder.path;
 }
 
 /**
@@ -1820,6 +1820,19 @@ function folderRowLabel(folder: ForestFolderNode): string {
 
 	const prefix = folder.parentPath === "" ? "" : `${folder.parentPath}/`;
 	return folder.path.startsWith(prefix) ? folder.path.slice(prefix.length) : folder.name;
+}
+
+/**
+ * AI: Label of a file row: its path relative to the template folder that owns
+ * it. A note directly in that folder stays `note.md`, while a note flattened
+ * up from a template-less subfolder becomes `alpha/note.md`, so two files with
+ * the same name in different branches stay distinguishable.
+ */
+function fileRowLabel(node: ForestFileNode): string {
+	if (node.scopeFolder === null) return node.name;
+
+	const prefix = node.scopeFolder === "" ? "" : `${node.scopeFolder}/`;
+	return node.path.startsWith(prefix) ? node.path.slice(prefix.length) : node.name;
 }
 
 function primaryVerb(node: ForestFileNode): VerbConfig | null {
