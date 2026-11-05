@@ -1,4 +1,4 @@
-import { App, Menu, Modal, Notice, TFile, type EventRef } from "obsidian";
+import { App, Menu, Modal, Notice, setTooltip, TFile, type EventRef } from "obsidian";
 import {
 	areMapsEqual,
 } from "../../core/mapOperations";
@@ -116,8 +116,8 @@ const SNIPPET = `projects/
     └── note.md`;
 
 /** AI: Icon of the status badge; `none` stays absent (attenuated row). */
-function stateIcon(node: ForestFileNode | ForestFolderNode): string {
-	if (node.kind === "folder" || node.kind === "template") {
+function stateIcon(node: ForestFileNode): string {
+	if (node.kind === "template") {
 		if (node.state === "ok") return "file-check";
 		if (node.state === "missing") return "file-x";
 		return "circle-dashed";
@@ -351,7 +351,7 @@ export class CascadeDashboardModal extends Modal {
 		fixAll.createSpan({ text: `Fix all (${forest ? countIssues(forest) : 0})` });
 		const issues = forest ? countIssues(forest) : 0;
 		fixAll.disabled = this.busy || issues === 0;
-		fixAll.setAttribute("aria-label", issues === 0 ? "No issues to fix" : "Fix all issues");
+		setTooltip(fixAll, issues === 0 ? "No issues to fix" : "Fix all issues");
 		fixAll.addEventListener("click", () => void this.runFixAll());
 		header.append(fixAll);
 
@@ -359,8 +359,7 @@ export class CascadeDashboardModal extends Modal {
 		setIconSafe(undo, "undo-2");
 		const canUndo = entryCount(getJournal()) > 0 && !this.busy;
 		undo.disabled = !canUndo;
-		undo.setAttribute("aria-label", "Undo the last dashboard operation");
-		undo.title = "Undo last batch";
+		setTooltip(undo, "Undo the last dashboard operation");
 		undo.addEventListener("click", () => {
 			const entries = listEntries(getJournal());
 			const last = entries[entries.length - 1];
@@ -729,7 +728,7 @@ export class CascadeDashboardModal extends Modal {
 		// structural context, so the full path stays available on hover.
 		if (row.node) {
 			name.addClass("is-link");
-			name.title = row.node.path;
+			setTooltip(name, row.node.path);
 			name.addEventListener("click", event => {
 				event.stopPropagation();
 				void this.openPath(row.node?.path);
@@ -738,14 +737,14 @@ export class CascadeDashboardModal extends Modal {
 			// Opening the template is a deliberate gesture: a plain click belongs
 			// to the row (expand/collapse), Ctrl/Cmd+click navigates.
 			const templatePath = row.folder.template.path;
-			name.title = `Ctrl/Cmd+click to open ${templatePath}`;
+			setTooltip(name, `Ctrl/Cmd+click to open ${templatePath}`);
 			name.addEventListener("click", event => {
 				if (!event.ctrlKey && !event.metaKey) return;
 				event.stopPropagation();
 				void this.openPath(templatePath);
 			});
 		} else if (row.folder) {
-			name.title = row.folder.path === "" ? "/" : row.folder.path;
+			setTooltip(name, row.folder.path === "" ? "/" : row.folder.path);
 		}
 		el.append(name);
 
@@ -756,15 +755,17 @@ export class CascadeDashboardModal extends Modal {
 			el.append(this.createCounts(row.folder.counts, row.folder.state));
 		}
 
-		// The badge aggregates the folder subtree, so it is only meaningful while
-		// the row is collapsed: once expanded, every child states the same fact
-		// on its own row and a cumulative badge would just repeat it.
-		if (row.kind === "folder" && row.folder && row.folder.state !== "none" && !row.expanded) {
-			const badge = createSpan({ cls: `ct-badge is-${row.folder.state}` });
-			setIconSafe(badge, stateIcon(row.folder));
-			badge.setAttribute("aria-label", stateLabel(row.folder.state));
-			badge.title = stateLabel(row.folder.state);
-			el.append(badge);
+		// A folder row carries two different facts:
+		// - the batch badge aggregates errors in the children (cumulative), so it
+		//   only makes sense while collapsed and only when it reports a problem;
+		// - the template badge describes the template itself against its parent
+		//   (not cumulative), so it stays visible when the folder is expanded.
+		if (row.kind === "folder" && row.folder?.template) {
+			const descendants = row.folder.descendantsState;
+			if (!row.expanded && (descendants === "missing" || descendants === "extra")) {
+				el.append(this.createBatchBadge(descendants));
+			}
+			el.append(this.createTemplateBadge(row.folder.template));
 		}
 
 		if (row.node && row.node.state !== "none") {
@@ -819,21 +820,49 @@ export class CascadeDashboardModal extends Modal {
 			["Ne", counts.notesExtra, "extra"],
 		] as const) {
 			const part = el.createSpan({ cls: `ct-count is-${kind}`, text: `${label} ${value}` });
-			part.title = label === "T"
+			setTooltip(part, label === "T"
 				? "Templates to update in this scope"
 				: label === "Nm"
 					? "Notes missing properties in this scope"
-					: "Notes with extra properties in this scope";
+					: "Notes with extra properties in this scope");
 		}
-		el.setAttribute("aria-label", `Scope state: ${stateLabel(state)}`);
+		setTooltip(el, `Scope state: ${stateLabel(state)}`);
 		return el;
 	}
 
 	private createBadge(node: ForestFileNode): HTMLElement {
 		const badge = createSpan({ cls: `ct-badge is-${node.state}` });
 		setIconSafe(badge, stateIcon(node));
-		badge.setAttribute("aria-label", stateLabel(node.state));
-		badge.title = stateLabel(node.state);
+		setTooltip(badge, stateLabel(node.state));
+		return badge;
+	}
+
+	/**
+	 * AI: Own conformance of the folder template against its parent. This is not
+	 * cumulative, so it is shown even when the folder is expanded. The labels
+	 * mirror the Properties panel for the same state.
+	 */
+	private createTemplateBadge(template: ForestFileNode): HTMLElement {
+		const badge = createSpan({ cls: `ct-badge is-${template.state}` });
+		setIconSafe(badge, stateIcon(template));
+		const label = template.state === "missing"
+			? "Template is missing properties from its parent template"
+			: template.localRoot
+				? "Local root template (no parent template)"
+				: "Template conforms to its parent template";
+		setTooltip(badge, label);
+		return badge;
+	}
+
+	/**
+	 * AI: Cumulative badge for errors in the folder's children. Hidden when the
+	 * subtree is clean: the template badge already states the folder's own health
+	 * and a second green icon would only add noise.
+	 */
+	private createBatchBadge(state: "missing" | "extra"): HTMLElement {
+		const badge = createSpan({ cls: `ct-badge is-${state}` });
+		setIconSafe(badge, "folder-tree");
+		setTooltip(badge, "Errors in children notes or templates");
 		return badge;
 	}
 
@@ -866,7 +895,7 @@ export class CascadeDashboardModal extends Modal {
 			setIconSafe(icon, verb.icon);
 			const label = createSpan({ cls: "text-button-label", text: verb.label });
 			action.append(icon, label);
-			action.title = blocked ? "Align is locked: update the template chain first" : verb.fullLabel;
+			setTooltip(action, blocked ? "Align is locked: update the template chain first" : verb.fullLabel);
 			action.addEventListener("click", event => {
 				event.stopPropagation();
 				if (blocked || this.busy) return;
@@ -879,7 +908,7 @@ export class CascadeDashboardModal extends Modal {
 		setIconSafe(more, "more-horizontal");
 		more.setAttribute("role", "button");
 		more.setAttribute("tabindex", "-1");
-		more.setAttribute("aria-label", "More actions");
+		setTooltip(more, "More actions");
 		more.addEventListener("click", event => {
 			event.stopPropagation();
 			this.openRowMenu(node, event, undefined, true);
@@ -904,9 +933,9 @@ export class CascadeDashboardModal extends Modal {
 				setIconSafe(icon, verb.icon);
 				const label = createSpan({ cls: "text-button-label", text: verb.fullLabel });
 				action.append(icon, label);
-				action.title = verb.blocked
+				setTooltip(action, verb.blocked
 					? "Align is locked: update the template chain first"
-					: `${verb.fullLabel} in this folder and below (${verb.nodes.length})`;
+					: `${verb.fullLabel} in this folder and below (${verb.nodes.length})`);
 				action.addEventListener("click", event => {
 					event.stopPropagation();
 					if (disabled || verb.blocked || this.busy) return;
@@ -922,7 +951,7 @@ export class CascadeDashboardModal extends Modal {
 		setIconSafe(more, "more-horizontal");
 		more.setAttribute("role", "button");
 		more.setAttribute("tabindex", "-1");
-		more.setAttribute("aria-label", "Folder actions");
+		setTooltip(more, "Folder actions");
 		more.addEventListener("click", event => {
 			event.stopPropagation();
 			this.openFolderMenu(folder, event, undefined, interactive);
@@ -1291,7 +1320,7 @@ export class CascadeDashboardModal extends Modal {
 		setIconSafe(dismiss, "x");
 		dismiss.setAttribute("role", "button");
 		dismiss.setAttribute("tabindex", "0");
-		dismiss.setAttribute("aria-label", "Dismiss error");
+		setTooltip(dismiss, "Dismiss error");
 		dismiss.addEventListener("click", () => {
 			this.error = null;
 			this.render();

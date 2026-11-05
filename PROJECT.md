@@ -159,13 +159,16 @@ Dettagli:
   ribbon (`git-fork`) e dal comando `Open cascade dashboard`. Non aggiunge
   controlli alla UI della nota: il pannello Properties resta invariato.
 - `Cascade` è una mappa **sola lettura** derivata dalle cartelle: per ogni local
-  root mostra le sottocartelle e le note raggruppate (`N notes`), con badge
-  aggregato mostrato solo a cartella chiusa (aperta, ogni figlio porta il proprio
-  stato e il badge cumulativo sarebbe una ripetizione); i conteggi `T` / `Nm` /
-  `Ne` restano solo in `Issues`, perché sono un'analisi di conformità e non un
-  fatto strutturale della mappa. La riga cartella
-  **è** la riga del suo template: il badge ne riassume lo stato e non esiste una
-  riga separata per il template. Il click semplice sul nome espande/collassa;
+  root mostra le sottocartelle e le note raggruppate (`N notes`). La riga cartella
+  porta due badge distinti: quello del **template** (conformità del template
+  rispetto al parent, non cumulativo, sempre visibile) e quello **batch** (errori
+  nelle note o nei template discendenti, cumulativo, mostrato solo a cartella
+  chiusa e solo quando c'è davvero un errore). I conteggi `T` / `Nm` / `Ne`
+  restano solo in `Issues`, perché sono un'analisi di conformità e non un fatto
+  strutturale della mappa. La riga cartella **è** la riga del suo template e non
+  esiste una riga separata per il template. I tooltip passano da `setTooltip`
+  (uno solo, gestito da Obsidian: niente `title` nativo in aggiunta). Il click
+  semplice sul nome espande/collassa;
   `Ctrl`/`Cmd`+click apre il template; il menu `⋯` della riga offre sempre
   `Open template` (visibile all'hover su desktop, sempre su mobile e raggiungibile
   con `Enter` da tastiera), così il template si apre anche solo col mouse senza

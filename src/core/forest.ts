@@ -102,6 +102,12 @@ export interface ForestFolderNode extends NodeBase {
 	folders: ForestFolderNode[];
 	/** Notes of this folder plus the notes of the flattened folders below it. */
 	notes: ForestFileNode[];
+	/**
+	 * Aggregate state of the child folders and notes, excluding this folder's own
+	 * template. Used for the cumulative "children errors" badge: `state` mixes
+	 * the template with its descendants and cannot tell the two apart.
+	 */
+	descendantsState: ForestState;
 	/** Nearest template for the notes of this folder (display only). */
 	referencePath: string | null;
 	/** Nearest ancestor cascade folder, `null` for a local root. */
@@ -390,6 +396,7 @@ export function buildForest(input: ForestInput): Forest {
 			template,
 			folders: [],
 			notes: [],
+			descendantsState: "none",
 			referencePath: template?.path ?? null,
 			parentPath: null,
 		};
@@ -446,25 +453,31 @@ export function buildForest(input: ForestInput): Forest {
 	roots.sort((first, second) => compareVaultPaths(first.path, second.path));
 
 	// Counters and badges are bottom-up: a folder describes its whole subtree.
+	// `state` includes the folder's own template; `descendantsState` excludes it,
+	// so the UI can show "this template" and "its children" as separate badges.
 	const visited = new Set<string>();
 	const finalizeFolder = (folder: ForestFolderNode): ScopeCounts => {
 		if (visited.has(folder.path)) return folder.counts;
 
 		let counts = folder.template?.counts ?? emptyCounts();
 		const states: ForestState[] = [];
+		const descendantStates: ForestState[] = [];
 		if (folder.template) states.push(folder.template.state);
 
 		for (const child of folder.folders) {
 			counts = addCounts(counts, finalizeFolder(child));
 			states.push(child.state);
+			descendantStates.push(child.state);
 		}
 		for (const note of folder.notes) {
 			counts = addCounts(counts, note.counts);
 			states.push(note.state);
+			descendantStates.push(note.state);
 		}
 
 		folder.counts = counts;
 		folder.state = aggregateState(states);
+		folder.descendantsState = aggregateState(descendantStates);
 		visited.add(folder.path);
 		return counts;
 	};

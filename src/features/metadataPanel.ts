@@ -1,4 +1,4 @@
-import { App, MarkdownView, Platform, Plugin, TAbstractFile, TFile, Workspace, WorkspaceLeaf, debounce } from "obsidian";
+import { App, MarkdownView, Platform, Plugin, TAbstractFile, TFile, Workspace, WorkspaceLeaf, debounce, setTooltip } from "obsidian";
 import {
 	computeReconformProps,
 	computeTemplateConformance,
@@ -417,7 +417,7 @@ function createActionButton(icon: string, label: string, flipped=false): {
 	// AI: the visual label can be hidden on phones (compact toolbar), so the
 	// accessible name must not depend on it. The reconform button later replaces
 	// this value with its phase-specific tooltip in `renderReconform`.
-	el.setAttribute("aria-label", label);
+	setTooltip(el, label);
 
 	const iconEl = createSpan({ cls: "text-button-icon" });
 	setIconSafe(iconEl, icon);
@@ -645,7 +645,7 @@ function setStatus(ui: PanelUI, config: StatusConfig, referencePath?: string): v
 	const label = referencePath
 		? `${config.label} — ${referencePath}${STATUS_ACTION_HINT}`
 		: config.label;
-	ui.statusEl.setAttribute("aria-label", label);
+	setTooltip(ui.statusEl, label);
 }
 
 /**
@@ -810,7 +810,7 @@ function renderReconform(ui: PanelUI): void {
 	ui.reconformLabelEl.setText(config.label);
 
 	const base = reconformTooltip(ui.reconformIsTemplate, config.action);
-	ui.reconformEl.setAttribute("aria-label", ui.reconformWarning ? `${base} — ${ui.reconformWarning}` : base);
+	setTooltip(ui.reconformEl, ui.reconformWarning ? `${base} — ${ui.reconformWarning}` : base);
 }
 
 /**
@@ -880,7 +880,7 @@ function setReconformUnavailable(ui: PanelUI, reason: string): void {
 	ui.reconformEl.classList.remove(NOOP_CLASS);
 	ui.reconformEl.classList.add(DISABLED_CLASS);
 	ui.reconformEl.setAttribute("aria-disabled", "true");
-	ui.reconformEl.setAttribute("aria-label", reason);
+	setTooltip(ui.reconformEl, reason);
 }
 
 /**
